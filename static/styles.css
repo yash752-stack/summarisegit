@@ -75,10 +75,6 @@ h1 {
   box-shadow: 0 18px 80px rgba(0, 0, 0, 0.28);
 }
 
-.form-panel {
-  margin-top: 10px;
-}
-
 .panel-title {
   font-size: 1.15rem;
   font-weight: 700;
@@ -99,13 +95,20 @@ label {
   font-size: 0.92rem;
 }
 
-input {
+input,
+textarea {
   width: 100%;
   padding: 12px 14px;
   border-radius: 12px;
   border: 1px solid rgba(145, 160, 194, 0.18);
   background: rgba(255, 255, 255, 0.03);
   color: var(--text);
+}
+
+textarea {
+  min-height: 160px;
+  resize: vertical;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
 }
 
 button {
@@ -118,12 +121,22 @@ button {
   background: linear-gradient(135deg, var(--accent), #5b4dff);
 }
 
+.secondary-button {
+  background: rgba(255, 255, 255, 0.06);
+  color: var(--text);
+  border: 1px solid rgba(145, 160, 194, 0.18);
+}
+
 .button-row,
 .inline-form,
 .tab-row {
   display: flex;
   gap: 12px;
   align-items: center;
+}
+
+.compact-row {
+  margin-top: 12px;
 }
 
 #status-text {
@@ -158,7 +171,7 @@ button {
 
 .subpanel h3 {
   font-size: 0.96rem;
-  margin-bottom: 12px;
+  margin: 20px 0 12px;
 }
 
 .list {
@@ -184,6 +197,7 @@ button {
   color: var(--muted);
   font-size: 0.9rem;
   margin-top: 6px;
+  line-height: 1.55;
 }
 
 #graph-canvas {
@@ -250,8 +264,22 @@ button {
     grid-template-columns: 1fr;
   }
 
-  .inline-form {
+  .inline-form,
+  .button-row,
+  .tab-row {
     flex-direction: column;
     align-items: stretch;
   }
+}
+
+#node-connections {
+  margin-top: 14px;
+}
+
+.compact-subpanel {
+  margin-top: 12px;
+}
+
+.compact-subpanel h3 {
+  margin: 0 0 8px;
 }

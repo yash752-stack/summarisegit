@@ -12,6 +12,7 @@ def materialize_repository(
     *,
     local_path: str | None = None,
     repo_url: str | None = None,
+    branch: str | None = None,
     upload_bytes: bytes | None = None,
     upload_name: str | None = None,
 ):
@@ -31,12 +32,11 @@ def materialize_repository(
 
         if repo_url:
             target = temp_root / "repo"
-            subprocess.run(
-                ["git", "clone", "--depth", "1", repo_url, str(target)],
-                check=True,
-                capture_output=True,
-                text=True,
-            )
+            clone_command = ["git", "clone", "--depth", "1"]
+            if branch:
+                clone_command.extend(["--branch", branch])
+            clone_command.extend([repo_url, str(target)])
+            subprocess.run(clone_command, check=True, capture_output=True, text=True)
             cleanup_needed = True
             yield target
             return
@@ -63,14 +63,8 @@ def materialize_repository(
             temp_dir.cleanup()
 
 
-
 def _resolve_extracted_root(extract_root: Path) -> Path:
     entries = [entry for entry in extract_root.iterdir() if entry.name != "__MACOSX"]
     if len(entries) == 1 and entries[0].is_dir():
         return entries[0]
     return extract_root
-
-
-
-def safe_repo_name(repo_root: Path) -> str:
-    return repo_root.name or "repository"

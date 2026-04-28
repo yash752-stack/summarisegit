@@ -10,10 +10,11 @@
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div class="eyebrow">Live Codebase Intelligence Engine</div>
+        <div class="eyebrow">Developer Copilot For Unfamiliar Repos</div>
         <h1>summarisegit</h1>
         <p class="subtitle">
-          Turn repositories into dependency graphs, impact reports, architecture summaries, and refactor intelligence.
+          Analyze repositories with branch-aware ingestion, function-level retrieval, dependency graphs,
+          impact analysis, newcomer explanations, and code-flow tracing.
         </p>
       </header>
 
@@ -33,6 +34,18 @@
               Upload Zip
               <input type="file" id="repo-zip" accept=".zip" />
             </label>
+            <label>
+              Branch
+              <input type="text" id="branch" placeholder="main" />
+            </label>
+            <label>
+              Extensions
+              <input type="text" id="extensions" placeholder=".py,.js,.ts,.tsx" />
+            </label>
+            <label>
+              Exclude Dirs
+              <input type="text" id="exclude-dirs" placeholder="node_modules,dist,build" />
+            </label>
           </div>
           <div class="button-row">
             <button type="submit" id="analyze-button">Analyze Repo</button>
@@ -46,17 +59,33 @@
           <div class="panel-title">Repository Summary</div>
           <div id="summary-cards" class="summary-cards"></div>
           <div class="subpanel">
+            <h3>Tech Stack</h3>
+            <div id="tech-stack"></div>
+          </div>
+          <div class="subpanel">
+            <h3>Metrics</h3>
+            <div id="metrics-list"></div>
+          </div>
+          <div class="subpanel">
             <h3>Biggest Files</h3>
             <div id="biggest-files"></div>
           </div>
           <div class="subpanel">
-            <h3>Most-Used Functions</h3>
-            <div id="used-functions"></div>
+            <h3>Most Used Functions</h3>
+            <div id="most-used-functions"></div>
           </div>
         </div>
         <div class="panel">
-          <div class="panel-title">Architecture Snapshot</div>
+          <div class="panel-title">Architecture Layers</div>
+          <div class="button-row compact-row">
+            <button type="button" class="secondary-button" id="engineer-view">Engineer View</button>
+            <button type="button" class="secondary-button" id="newcomer-view">Explain Like I'm New</button>
+          </div>
           <div id="architecture"></div>
+          <div class="subpanel">
+            <h3>Folder Summaries</h3>
+            <div id="folder-summaries"></div>
+          </div>
         </div>
       </section>
 
@@ -72,8 +101,9 @@
         <div class="panel">
           <div class="panel-title">Source & Node Details</div>
           <div id="node-details" class="node-details">
-            Click a graph node or search result to inspect code and connected context.
+            Click a graph node or search result to inspect code, dependency context, and connected nodes.
           </div>
+          <div id="node-connections"></div>
           <pre id="source-viewer" class="source-viewer"></pre>
         </div>
       </section>
@@ -94,6 +124,27 @@
             <button type="submit">Search</button>
           </form>
           <div id="search-results"></div>
+        </div>
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel">
+          <div class="panel-title">Code Flow Simulation</div>
+          <form id="flow-form" class="inline-form">
+            <input id="flow-target" type="text" placeholder="Start from a function name like login_user" />
+            <button type="submit">Trace Flow</button>
+          </form>
+          <div id="flow-output"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">PR Review Mode</div>
+          <form id="diff-form">
+            <textarea id="diff-text" placeholder="Paste a git diff here to get touched files and predicted risk areas"></textarea>
+            <div class="button-row compact-row">
+              <button type="submit">Review Diff</button>
+            </div>
+          </form>
+          <div id="diff-output"></div>
         </div>
       </section>
 
