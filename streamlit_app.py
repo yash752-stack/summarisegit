@@ -171,6 +171,7 @@ if report is None or analyzer is None:
             """
             ### What this app gives you
             - Repo Intelligence Pack exports for Claude, interviews, PR review, and architecture handoff
+            - Detailed resume descriptions, resume bullets, and interview talking points generated from the analyzed repo
             - Function-level cards with inputs, outputs, calls, and risk labels
             - Impact analysis and suggested test targets
             - Auto-generated repo map, architecture summary, and improvement plan
@@ -210,7 +211,7 @@ with st.expander("Repo map", expanded=False):
                 st.markdown(f"**{item['path']}**")
                 st.caption(" · ".join(item["responsibilities"]))
 
-summary_tab, architecture_tab, function_tab, impact_tab, improve_tab, ask_tab, export_tab = st.tabs(
+summary_tab, architecture_tab, function_tab, impact_tab, improve_tab, ask_tab, resume_tab, export_tab = st.tabs(
     [
         "Summary",
         "Architecture",
@@ -218,6 +219,7 @@ summary_tab, architecture_tab, function_tab, impact_tab, improve_tab, ask_tab, e
         "Impact",
         "Improvements",
         "Ask Repo",
+        "Resume",
         "Export",
     ]
 )
@@ -357,6 +359,41 @@ with ask_tab:
         st.write("Evidence", answer.get("evidence", []))
         st.write("Next steps", answer.get("next_steps", []))
 
+with resume_tab:
+    resume = report["resume_artifacts"]
+    st.subheader("Resume description generator")
+    st.caption("Generated from the uploaded repo so you can lift a project summary, resume bullets, and talking points directly into your resume or portfolio.")
+
+    st.markdown("#### One-liner")
+    st.code(resume["one_liner"])
+
+    st.markdown("#### Detailed resume description")
+    st.write(resume["detailed_description"])
+
+    st.markdown("#### Resume bullets")
+    for item in resume["resume_bullets"]:
+        st.markdown(f"- {item}")
+
+    left, right = st.columns(2)
+    with left:
+        st.markdown("#### Tech stack to mention")
+        st.write(resume["tech_stack"])
+    with right:
+        st.markdown("#### Interview talking points")
+        for item in resume["talking_points"]:
+            st.markdown(f"- {item}")
+
+    resume_pack = analyzer.export_pack("resume")
+    for file in resume_pack["files"]:
+        st.download_button(
+            label=f"Download {file['name']}",
+            data=file["content"],
+            file_name=file["name"],
+            mime=file.get("content_type", "text/plain"),
+            use_container_width=True,
+            key=f"resume-{file['name']}",
+        )
+
 with export_tab:
     st.subheader("Context compression modes")
     mode_name = st.selectbox("Preview mode", list(report["context_modes"].keys()))
@@ -383,4 +420,16 @@ with export_tab:
             mime=file.get("content_type", "text/plain"),
             use_container_width=True,
             key=f"interview-{file['name']}",
+        )
+
+    st.subheader("Resume export")
+    resume_pack = analyzer.export_pack("resume")
+    for file in resume_pack["files"]:
+        st.download_button(
+            label=f"Download {file['name']}",
+            data=file["content"],
+            file_name=file["name"],
+            mime=file.get("content_type", "text/plain"),
+            use_container_width=True,
+            key=f"resume-export-{file['name']}",
         )

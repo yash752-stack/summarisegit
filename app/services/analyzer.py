@@ -130,6 +130,7 @@ class RepositoryAnalyzer:
         self.health: dict[str, Any] = {}
         self.diagrams: dict[str, str] = {}
         self.context_modes: dict[str, str] = {}
+        self.resume_artifacts: dict[str, Any] = {}
         self._started_at = time.perf_counter()
         self._report: dict[str, Any] | None = None
 
@@ -146,6 +147,7 @@ class RepositoryAnalyzer:
         self.health = self._build_health_scores(self.improvements)
         self.diagrams = self._build_diagrams()
         self.metrics = self._build_metrics()
+        self.resume_artifacts = self._build_resume_artifacts()
         self.context_modes = self._build_context_modes()
         self._report = self._build_report()
         return self._report
@@ -441,6 +443,7 @@ class RepositoryAnalyzer:
             "health": self.health,
             "diagrams": self.diagrams,
             "context_modes": self.context_modes,
+            "resume_artifacts": self.resume_artifacts,
             "sources": self.sources,
             "parse_errors": self.parse_errors,
             "retrieval_strategy": {
@@ -951,6 +954,15 @@ class RepositoryAnalyzer:
                 "files": [self._export_file("interview_pack.md", self._interview_pack_markdown())],
             }
 
+        if kind == "resume":
+            return {
+                "kind": kind,
+                "files": [
+                    self._export_file("resume_description.md", self._resume_pack_markdown()),
+                    self._export_file("resume_bullets.txt", "\n".join(f"- {item}" for item in self.resume_artifacts["resume_bullets"]) + "\n"),
+                ],
+            }
+
         if kind == "architecture":
             return {
                 "kind": kind,
@@ -1107,6 +1119,7 @@ class RepositoryAnalyzer:
             "deep": self._deep_summary(),
             "claude": self._claude_summary(),
             "interview": self._interview_summary(),
+            "resume": self._resume_summary(),
         }
 
     def _symbols_for_file(self, file_path: str) -> list[SymbolRecord]:
@@ -1510,6 +1523,45 @@ class RepositoryAnalyzer:
     def _interview_summary(self) -> str:
         return self._interview_pack_markdown()
 
+    def _resume_summary(self) -> str:
+        return self.resume_artifacts["detailed_description"]
+
+    def _build_resume_artifacts(self) -> dict[str, Any]:
+        central = self.explain_architecture(audience="engineer")["central_files"][:3]
+        central_paths = [item["path"] for item in central]
+        top_cards = self.function_cards[:4]
+        focus_stack = ", ".join(self.tech_stack[:6]) or "Python, JavaScript, dependency graphs, retrieval"
+        one_liner = (
+            f"Built {self.repo_root.name}, a repo intelligence platform that parses repositories into dependency-aware summaries, impact analysis, and Claude-ready context packs."
+        )
+        detailed_description = (
+            f"Developed {self.repo_root.name} as a code understanding system for unfamiliar repositories using {focus_stack}. "
+            f"The platform ingests code from GitHub URLs, local directories, or ZIP uploads, filters source files by language, and extracts structural metadata such as imports, symbols, and function-call relationships. "
+            f"It then builds file and symbol dependency graphs to power architecture summaries, repo maps, code-flow tracing, hybrid search, and change impact analysis. "
+            f"The system also produces Repo Intelligence Pack exports for Claude, interview preparation, PR review, and architecture handoff, making large codebases easier to understand without pasting entire repositories into an LLM."
+        )
+        bullets = [
+            f"Built {self.repo_root.name}, a repo intelligence platform that ingests repositories from GitHub, local paths, and ZIP uploads and converts them into dependency-aware architecture summaries.",
+            f"Implemented AST- and structure-driven parsing across {len(self.files)} files and {sum(1 for s in self.symbols if s.kind in {'function', 'async_function', 'method'})} functions to extract imports, symbols, and function-call relationships.",
+            "Designed graph-based impact analysis to identify direct dependents, indirect change blast radius, affected files, and likely regression test targets for repository updates.",
+            "Developed hybrid code search, repo Q&A, function cards, and code-flow tracing to help new engineers understand unfamiliar codebases faster.",
+            "Added export pipelines for Claude-ready context, interview packs, architecture reports, and resume-ready project descriptions.",
+        ]
+        talking_points = [
+            f"Best files to mention in an interview: {', '.join(central_paths) if central_paths else 'entry-point and analysis modules'}.",
+            f"Strongest technical differentiator: graph-backed reasoning across {len(self.file_dependency_edges)} file dependencies and {len(self.symbol_call_edges)} symbol calls.",
+            f"Highest-risk functions worth discussing: {', '.join(card['function'] for card in top_cards[:3]) if top_cards else 'impact analysis and retrieval flows'}.",
+            "Best framing: this is not just a summarizer; it is a repo-to-Claude context compiler and change-understanding engine.",
+        ]
+        return {
+            "project_title": self.repo_root.name,
+            "one_liner": one_liner,
+            "detailed_description": detailed_description,
+            "resume_bullets": bullets,
+            "tech_stack": self.tech_stack[:8],
+            "talking_points": talking_points,
+        }
+
     def _repo_context_markdown(
         self,
         *,
@@ -1681,6 +1733,37 @@ class RepositoryAnalyzer:
         ]
         for item in hotspots:
             lines.append(f"- `{item['target']}` ({item['score']}): {item['reason']}")
+        return "\n".join(lines).strip() + "\n"
+
+    def _resume_pack_markdown(self) -> str:
+        resume = self.resume_artifacts
+        lines = [
+            f"# Resume Description: {resume['project_title']}",
+            "",
+            "## One-Liner",
+            "",
+            resume["one_liner"],
+            "",
+            "## Detailed Description",
+            "",
+            resume["detailed_description"],
+            "",
+            "## Resume Bullets",
+            "",
+        ]
+        for item in resume["resume_bullets"]:
+            lines.append(f"- {item}")
+        lines.extend([
+            "",
+            "## Tech Stack",
+            "",
+            f"- {', '.join(resume['tech_stack']) or 'Not inferred'}",
+            "",
+            "## Interview Talking Points",
+            "",
+        ])
+        for item in resume["talking_points"]:
+            lines.append(f"- {item}")
         return "\n".join(lines).strip() + "\n"
 
     def _pr_review_context_markdown(self, diff_text: str) -> str:

@@ -165,3 +165,12 @@ def test_repository_analyzer_builds_repo_intelligence_pack_and_repo_qa(tmp_path:
         "architecture_diagram.mmd",
         "dependency_graph.json",
     }
+
+    resume = report["resume_artifacts"]
+    assert "detailed_description" in resume
+    assert resume["resume_bullets"]
+    assert "repo intelligence" in resume["one_liner"].lower()
+
+    resume_pack = analyzer.export_pack("resume")
+    resume_exported_names = {item["name"] for item in resume_pack["files"]}
+    assert resume_exported_names == {"resume_description.md", "resume_bullets.txt"}

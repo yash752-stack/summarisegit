@@ -133,6 +133,7 @@ def get_report(report_id: str) -> dict[str, Any]:
         "improvements": report["improvements"],
         "diagrams": report["diagrams"],
         "context_modes": report["context_modes"],
+        "resume_artifacts": report["resume_artifacts"],
         "refactor_suggestions": report["refactor_suggestions"],
         "dead_code": report["dead_code"],
         "parse_errors": report["parse_errors"],

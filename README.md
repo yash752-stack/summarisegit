@@ -29,6 +29,7 @@ That means there is **no OpenAI, Anthropic, Groq, or paid vector database depend
 - repo ingestion from local path, GitHub URL, or zip upload
 - branch-aware analysis with extension and directory filtering
 - file-level and function-level structural summaries
+- detailed resume description generation with resume bullets and interview talking points
 - file dependency graph and function call graph
 - impact analysis with affected files, dependents, and suggested tests
 - Ask Repo mode for architecture and code flow questions
@@ -45,6 +46,8 @@ One-click export generates:
 - `improvement_plan.md`
 - `architecture_diagram.mmd`
 - `dependency_graph.json`
+- `resume_description.md`
+- `resume_bullets.txt`
 
 ## Block Architecture
 
@@ -128,6 +131,7 @@ uvicorn app.main:app --reload --port 8010
 **summarisegit | Streamlit, FastAPI, AST, Dependency Graphs, TF-IDF**
 
 - Built a repo intelligence platform that parses repositories into function-level chunks and dependency graphs for architecture discovery and impact analysis
+- Added repo-driven resume description generation that turns analyzed repositories into detailed project summaries, bullets, and interview talking points
 - Implemented Repo Intelligence Pack exports that compress large codebases into Claude-ready architecture, function map, and improvement artifacts
 - Developed hybrid retrieval using TF-IDF, keyword search, and graph context to answer structural questions about unfamiliar repositories
 - Added impact analysis, code flow tracing, repo Q&A, and architecture improvement suggestions in both Streamlit and API-driven interfaces
