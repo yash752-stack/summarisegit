@@ -16,6 +16,16 @@ st.set_page_config(
     initial_sidebar_state="expanded",
 )
 
+BADGE_STRIP = """
+<div style="display:flex;flex-wrap:wrap;gap:10px;margin:0.35rem 0 1.1rem 0;align-items:center;">
+  <img alt="GitHub" src="https://img.shields.io/badge/GitHub-181717?style=for-the-badge&logo=github&logoColor=white" />
+  <img alt="Docker" src="https://img.shields.io/badge/Docker-2496ED?style=for-the-badge&logo=docker&logoColor=white" />
+  <img alt="Kubernetes" src="https://img.shields.io/badge/Kubernetes-326CE5?style=for-the-badge&logo=kubernetes&logoColor=white" />
+  <img alt="Streamlit" src="https://img.shields.io/badge/Streamlit-FF4B4B?style=for-the-badge&logo=streamlit&logoColor=white" />
+  <img alt="FastAPI" src="https://img.shields.io/badge/FastAPI-009688?style=for-the-badge&logo=fastapi&logoColor=white" />
+</div>
+"""
+
 
 def split_csv(value: str) -> list[str] | None:
     items = [item.strip() for item in value.split(",") if item.strip()]
@@ -55,6 +65,45 @@ def run_analysis(
     return analyzer, report
 
 
+def render_overview_graph(report: dict[str, Any]) -> None:
+    summary = report["summary"]
+    graph_source = f"""
+    digraph RepoOverview {{
+        rankdir=LR;
+        splines=ortho;
+        node [shape=box, style="rounded,filled", color="#415a77", fillcolor="#0f1724", fontcolor="#f5f7ff", margin="0.22,0.16"];
+        edge [color="#7c8fb3", penwidth=1.3];
+
+        input [label="1. Repo Input\nURL | Local Path | ZIP"];
+        materialize [label="2. Materialize Repository\nClone / Unpack / Resolve Branch"];
+        parse [label="3. Parse Files\n{summary['total_files']} files | {summary['total_functions']} functions"];
+        graph [label="4. Build Dependency Graph\nFiles + Symbols + Imports + Calls"];
+        reason [label="5. Reasoning Engine\nImpact | Search | Flow | Improvements"];
+        export [label="6. Repo Intelligence Pack\nClaude | Interview | Architecture"];
+
+        input -> materialize -> parse -> graph -> reason -> export;
+    }}
+    """
+    st.graphviz_chart(graph_source, use_container_width=True)
+
+
+def render_overview_steps(report: dict[str, Any]) -> None:
+    summary = report["summary"]
+    metrics = report["metrics"]
+    steps = [
+        ("1. Ingest", "Materialize the repo from GitHub, local disk, or uploaded ZIP."),
+        ("2. Parse", f"Scan {summary['total_files']} files and extract {summary['total_functions']} functions/classes."),
+        ("3. Map", "Resolve imports, symbol calls, central files, and repo structure relationships."),
+        ("4. Reason", "Run search, impact analysis, code-flow tracing, and repo Q&A over graph context."),
+        ("5. Export", f"Compress results into context packs using the {metrics['search_backend']} retrieval layer."),
+    ]
+    cols = st.columns(len(steps))
+    for col, (title, body) in zip(cols, steps):
+        with col:
+            st.markdown(f"**{title}**")
+            st.caption(body)
+
+
 if "report" not in st.session_state:
     st.session_state.report = None
 if "analyzer" not in st.session_state:
@@ -69,6 +118,7 @@ if "last_pr_review" not in st.session_state:
     st.session_state.last_pr_review = None
 
 
+st.markdown(BADGE_STRIP, unsafe_allow_html=True)
 st.title("summarisegit")
 st.caption(
     "Repo-to-Claude context compiler and code intelligence workstation for unfamiliar repositories. "
@@ -128,6 +178,7 @@ if report is None or analyzer is None:
             """
         )
     )
+    st.info("After you analyze a repo, the first large block will draw a rough step-by-step architecture overview before the deeper tabs.")
     st.stop()
 
 summary = report["summary"]
@@ -144,6 +195,12 @@ health_cols[0].metric("Maintainability", health["maintainability"])
 health_cols[1].metric("Missing Tests", health["missing_tests"])
 health_cols[2].metric("Search Backend", report["metrics"]["search_backend"])
 health_cols[3].metric("Chunks", report["metrics"]["chunk_count"])
+
+with st.container(border=True):
+    st.subheader("Architecture overview")
+    st.caption("Big-picture flow first, so the repo makes sense before you dive into file graphs, function cards, and impact analysis.")
+    render_overview_graph(report)
+    render_overview_steps(report)
 
 with st.expander("Repo map", expanded=False):
     for category in report["repo_map"]:
