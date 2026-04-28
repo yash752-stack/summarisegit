@@ -1,78 +1,67 @@
 # summarisegit
 
-`summarisegit` is a repo-to-Claude context compiler and code intelligence workstation for unfamiliar repositories. It does not treat code as raw text blobs. Instead, it ingests repositories structurally, extracts symbols and imports, builds dependency graphs, and produces a **Repo Intelligence Pack** that is useful for onboarding, impact analysis, interviews, PR reviews, and AI context compression.
+`summarisegit` is a repo-to-Claude context compiler and code intelligence workstation for unfamiliar repositories. It parses repositories structurally, builds dependency graphs, generates impact analysis, and exports compact context packs that are actually usable in Claude/GPT instead of dumping the whole repo.
 
-## Why It Matters
+[![Streamlit](https://static.streamlit.io/badges/streamlit_badge_black_white.svg)](https://share.streamlit.io/)
 
-Most repo tools stop at "summarize this codebase." `summarisegit` goes further:
+## Live Demo
 
-- maps repo structure into file, folder, and function-level views
-- explains what important files and functions actually do
-- estimates what breaks when a file or function changes
-- suggests tests to run before you ship changes
-- detects code smells, risky dependencies, and architecture bottlenecks
-- exports compact Claude-ready context so you do not waste tokens pasting an entire repo
+- Streamlit app entrypoint: `streamlit_app.py`
+- FastAPI app entrypoint: `app/main.py`
+- Public Streamlit URL: deploy this repo on Streamlit Community Cloud and select `streamlit_app.py`
+- Local Streamlit run: `streamlit run streamlit_app.py`
 
-## Core Product Modes
+## API Usage
 
-### Repo Intelligence Pack
+This project currently uses **no paid external API**.
 
-One click export that generates:
+The current engine is built on:
+- Python AST parsing
+- JavaScript/TypeScript structural parsing
+- TF-IDF retrieval with `scikit-learn`
+- graph traversal for impact and dependency analysis
+- `git clone` for public GitHub repository ingestion
+
+That means there is **no OpenAI, Anthropic, Groq, or paid vector database dependency** required to run the current version.
+
+## What It Does
+
+- repo ingestion from local path, GitHub URL, or zip upload
+- branch-aware analysis with extension and directory filtering
+- file-level and function-level structural summaries
+- file dependency graph and function call graph
+- impact analysis with affected files, dependents, and suggested tests
+- Ask Repo mode for architecture and code flow questions
+- Repo Intelligence Pack exports for Claude, interviews, architecture handoff, and PR review
+- improvement engine for code smells, large files, missing tests, risky dependencies, security smells, and architecture bottlenecks
+
+## Repo Intelligence Pack
+
+One-click export generates:
 
 - `repo_context.md`
 - `architecture.md`
 - `function_map.md`
 - `improvement_plan.md`
+- `architecture_diagram.mmd`
 - `dependency_graph.json`
 
-### Ask Repo
+## Block Architecture
 
-Ask questions such as:
+```mermaid
+flowchart TD
+    A[Repo Input] --> B[Repository Materializer]
+    B --> C[Language-aware Filtering]
+    C --> D[Parser and Symbol Extractor]
+    D --> E[Dependency Graph Builder]
+    E --> F[Hybrid Retrieval Engine]
+    F --> G[Reasoning Layer]
+    G --> H[Repo Intelligence Pack]
+    G --> I[Streamlit Workspace]
+    G --> J[FastAPI API]
+```
 
-- `What happens when /api/analyze is called?`
-- `Where is authentication handled?`
-- `Which file should I change to add Java support?`
-- `What functions are risky?`
-- `Explain this repo for an interview.`
-
-### Impact Analysis
-
-Given a file or function, the engine returns:
-
-- direct dependents
-- indirect dependents
-- affected files
-- suggested test files
-- a heuristic risk score
-
-### Code Flow Simulation
-
-Trace how execution moves through the repository from a starting symbol, with a Mermaid flow preview and step-by-step explanation.
-
-## Feature Set
-
-- branch-aware repo ingestion from local path, GitHub URL, or zip upload
-- language-aware filtering and ignore rules for Python and JavaScript/TypeScript
-- function-level and class-level chunking for retrieval
-- file dependency graph and symbol call graph
-- multi-level summaries across repo, folder, file, and function scopes
-- hybrid retrieval with TF-IDF plus keyword fallback and graph context
-- function explanation cards with inputs, outputs, callees, and risk labels
-- architecture narrative for engineers and a separate "Explain Like I'm New" mode
-- PR diff review mode for touched files and likely risk areas
-- improvement engine for large files, god functions, dead code candidates, poor naming, missing tests, risky dependencies, security smells, and performance smells
-- compression modes for `tiny`, `medium`, `deep`, `claude`, and `interview`
-- interactive frontend with repo map, graph canvas, function cards, details panel, and export actions
-
-## Tech Stack
-
-- Backend: FastAPI
-- Parsing: Python `ast` plus JavaScript/TypeScript structural parsing
-- Retrieval: TF-IDF via scikit-learn, keyword fallback
-- Graph model: in-memory adjacency lists for file and symbol dependencies
-- Frontend: HTML, CSS, vanilla JS, D3.js
-
-## Architecture
+## System Flow
 
 ```text
 User Input
@@ -89,10 +78,21 @@ Hybrid Retrieval (TF-IDF + keyword + graph context)
    ↓
 Reasoning Layer (impact, flow, architecture, improvements, diff review)
    ↓
-Repo Intelligence Pack + UI Workspace
+Repo Intelligence Pack + Streamlit Workspace + FastAPI API
 ```
 
-## API Surface
+## Streamlit Deployment
+
+To deploy on Streamlit Community Cloud:
+
+1. Push this repo to GitHub
+2. Go to `share.streamlit.io`
+3. Click **Create app**
+4. Select this repository
+5. Set the entrypoint file to `streamlit_app.py`
+6. Deploy
+
+## FastAPI API Surface
 
 - `POST /api/analyze`
 - `GET /api/reports/{report_id}`
@@ -108,20 +108,26 @@ Repo Intelligence Pack + UI Workspace
 
 ## Run Locally
 
+### Streamlit
+
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
 pip install -r requirements.txt
+streamlit run streamlit_app.py
+```
+
+### FastAPI
+
+```bash
 uvicorn app.main:app --reload --port 8010
 ```
 
-Then open [http://127.0.0.1:8010](http://127.0.0.1:8010).
-
 ## Resume Version
 
-**summarisegit | FastAPI, AST, Dependency Graphs, TF-IDF, D3.js**
+**summarisegit | Streamlit, FastAPI, AST, Dependency Graphs, TF-IDF**
 
-- Built a repo intelligence platform that parses repositories into function-level chunks and dependency graphs for architecture discovery and codebase navigation
-- Implemented impact analysis to detect direct and transitive change blast radius across files, symbols, and tests with heuristic risk scoring
-- Developed a Repo Intelligence Pack exporter that generates Claude-ready markdown context, architecture summaries, function maps, and dependency graph artifacts
-- Added hybrid retrieval, code flow tracing, newcomer-friendly explanations, and diff review workflows for faster onboarding and safer repo changes
+- Built a repo intelligence platform that parses repositories into function-level chunks and dependency graphs for architecture discovery and impact analysis
+- Implemented Repo Intelligence Pack exports that compress large codebases into Claude-ready architecture, function map, and improvement artifacts
+- Developed hybrid retrieval using TF-IDF, keyword search, and graph context to answer structural questions about unfamiliar repositories
+- Added impact analysis, code flow tracing, repo Q&A, and architecture improvement suggestions in both Streamlit and API-driven interfaces
