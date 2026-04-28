@@ -1,9 +1,9 @@
 from __future__ import annotations
 
 from dataclasses import dataclass
+from pathlib import Path
 from typing import Any
 import uuid
-from pathlib import Path
 
 from fastapi import FastAPI, File, HTTPException, Query, UploadFile
 from fastapi.responses import FileResponse
@@ -18,7 +18,7 @@ from .services.repository import materialize_repository
 BASE_DIR = Path(__file__).resolve().parent.parent
 STATIC_DIR = BASE_DIR / "static"
 
-app = FastAPI(title="summarisegit", version="2.0.0")
+app = FastAPI(title="summarisegit", version="3.0.0")
 app.mount("/static", StaticFiles(directory=STATIC_DIR), name="static")
 
 
@@ -30,6 +30,15 @@ class CachedAnalysis:
 
 class DiffReviewRequest(BaseModel):
     diff_text: str
+
+
+class AskRepoRequest(BaseModel):
+    question: str
+
+
+class ExportRequest(BaseModel):
+    kind: str
+    diff_text: str | None = None
 
 
 REPORT_STORE: dict[str, CachedAnalysis] = {}
@@ -114,10 +123,16 @@ def get_report(report_id: str) -> dict[str, Any]:
         "repo_fingerprint": report["repo_fingerprint"],
         "files": report["files"],
         "symbols": report["symbols"],
+        "repo_map": report["repo_map"],
+        "function_cards": report["function_cards"],
         "folder_summaries": report["folder_summaries"],
         "hierarchy": report["hierarchy"],
         "architecture": report["architecture"],
         "newcomer_guide": report["newcomer_guide"],
+        "health": report["health"],
+        "improvements": report["improvements"],
+        "diagrams": report["diagrams"],
+        "context_modes": report["context_modes"],
         "refactor_suggestions": report["refactor_suggestions"],
         "dead_code": report["dead_code"],
         "parse_errors": report["parse_errors"],
@@ -157,6 +172,21 @@ def search_report(report_id: str, q: str) -> dict[str, Any]:
     return {"query": q, "results": analyzer.search(q)}
 
 
+@app.post("/api/reports/{report_id}/ask")
+def ask_repo(report_id: str, payload: AskRepoRequest) -> dict[str, Any]:
+    analyzer = _get_cached(report_id).analyzer
+    return analyzer.ask_repo(payload.question)
+
+
+@app.post("/api/reports/{report_id}/export")
+def export_pack(report_id: str, payload: ExportRequest) -> dict[str, Any]:
+    analyzer = _get_cached(report_id).analyzer
+    try:
+        return analyzer.export_pack(payload.kind, diff_text=payload.diff_text)
+    except KeyError as exc:
+        raise HTTPException(status_code=400, detail=str(exc)) from exc
+
+
 @app.get("/api/reports/{report_id}/explain")
 def explain_report(
     report_id: str,
@@ -176,6 +206,8 @@ def explain_report(
         return {"items": report["refactor_suggestions"]}
     if mode == "dead-code":
         return {"items": report["dead_code"]}
+    if mode == "improvements":
+        return report["improvements"]
     if mode == "symbol":
         if not target:
             raise HTTPException(status_code=400, detail="target is required for mode=symbol")
@@ -213,7 +245,6 @@ def health() -> dict[str, Any]:
     return {"ok": True, "reports_cached": len(REPORT_STORE)}
 
 
-
 def _get_cached(report_id: str) -> CachedAnalysis:
     cached = REPORT_STORE.get(report_id)
     if not cached:
@@ -221,13 +252,11 @@ def _get_cached(report_id: str) -> CachedAnalysis:
     return cached
 
 
-
 def _split_csv(value: str | None) -> list[str] | None:
     if not value:
         return None
     items = [item.strip() for item in value.split(",") if item.strip()]
     return items or None
-
 
 
 def _request_cache_key(

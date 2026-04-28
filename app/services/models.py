@@ -17,6 +17,8 @@ class SymbolRecord:
     docstring: str = ""
     snippet: str = ""
     calls: list[str] = field(default_factory=list)
+    parameters: list[str] = field(default_factory=list)
+    return_hint: str = ""
 
 
 @dataclass

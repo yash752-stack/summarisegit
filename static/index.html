@@ -10,11 +10,11 @@
   <body>
     <div class="page-shell">
       <header class="hero">
-        <div class="eyebrow">Developer Copilot For Unfamiliar Repos</div>
+        <div class="eyebrow">Repo Intelligence Pack</div>
         <h1>summarisegit</h1>
         <p class="subtitle">
-          Analyze repositories with branch-aware ingestion, function-level retrieval, dependency graphs,
-          impact analysis, newcomer explanations, and code-flow tracing.
+          Turn unfamiliar repositories into architecture maps, function cards, impact analysis, improvement plans,
+          and Claude-ready context packs.
         </p>
       </header>
 
@@ -54,109 +54,185 @@
         </form>
       </section>
 
-      <section class="grid two-col">
-        <div class="panel">
-          <div class="panel-title">Repository Summary</div>
-          <div id="summary-cards" class="summary-cards"></div>
-          <div class="subpanel">
-            <h3>Tech Stack</h3>
-            <div id="tech-stack"></div>
-          </div>
-          <div class="subpanel">
-            <h3>Metrics</h3>
-            <div id="metrics-list"></div>
-          </div>
-          <div class="subpanel">
-            <h3>Biggest Files</h3>
-            <div id="biggest-files"></div>
-          </div>
-          <div class="subpanel">
-            <h3>Most Used Functions</h3>
-            <div id="most-used-functions"></div>
-          </div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Architecture Layers</div>
-          <div class="button-row compact-row">
-            <button type="button" class="secondary-button" id="engineer-view">Engineer View</button>
-            <button type="button" class="secondary-button" id="newcomer-view">Explain Like I'm New</button>
-          </div>
-          <div id="architecture"></div>
-          <div class="subpanel">
-            <h3>Folder Summaries</h3>
-            <div id="folder-summaries"></div>
-          </div>
+      <section class="panel top-strip">
+        <div class="summary-cards" id="summary-cards"></div>
+        <div class="health-cards" id="health-cards"></div>
+        <div class="export-actions">
+          <button type="button" class="secondary-button export-trigger" data-export-kind="repo-intelligence-pack">Export Repo Intelligence Pack</button>
+          <button type="button" class="secondary-button export-trigger" data-export-kind="claude">Export for Claude</button>
+          <button type="button" class="secondary-button export-trigger" data-export-kind="interview">Export for Interview</button>
+          <button type="button" class="secondary-button export-trigger" data-export-kind="architecture">Export Architecture Report</button>
+          <button type="button" class="secondary-button export-trigger" data-export-kind="pr">Export PR Review Context</button>
         </div>
       </section>
 
-      <section class="grid two-col">
-        <div class="panel">
-          <div class="panel-title">Dependency Graph</div>
-          <div class="tab-row">
-            <button class="tab active" data-graph-kind="file">File Graph</button>
-            <button class="tab" data-graph-kind="symbol">Function Graph</button>
+      <section class="workspace">
+        <aside class="panel sidebar">
+          <div class="panel-title">Repo Map</div>
+          <div id="repo-map"></div>
+        </aside>
+
+        <main class="mainstage">
+          <div class="tab-row sticky-tabs">
+            <button class="tab active" data-tab="summary">Summary</button>
+            <button class="tab" data-tab="architecture">Architecture</button>
+            <button class="tab" data-tab="function-map">Function Map</button>
+            <button class="tab" data-tab="impact">Impact</button>
+            <button class="tab" data-tab="improvements">Improvements</button>
+            <button class="tab" data-tab="ask-repo">Ask Repo</button>
+            <button class="tab" data-tab="export">Export</button>
           </div>
-          <svg id="graph-canvas" viewBox="0 0 900 500"></svg>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Source & Node Details</div>
+
+          <section class="tab-panel active" data-panel="summary">
+            <div class="grid two-col">
+              <div class="panel">
+                <div class="panel-title">Tech Stack & Metrics</div>
+                <div id="tech-stack"></div>
+                <div class="subpanel">
+                  <h3>Metrics</h3>
+                  <div id="metrics-list"></div>
+                </div>
+                <div class="subpanel">
+                  <h3>Folder Summaries</h3>
+                  <div id="folder-summaries"></div>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Key Files & Functions</div>
+                <div class="subpanel">
+                  <h3>Biggest Files</h3>
+                  <div id="biggest-files"></div>
+                </div>
+                <div class="subpanel">
+                  <h3>Most Used Functions</h3>
+                  <div id="most-used-functions"></div>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="architecture">
+            <div class="grid two-col">
+              <div class="panel">
+                <div class="panel-title">Architecture Narrative</div>
+                <div class="button-row compact-row">
+                  <button type="button" class="secondary-button" id="engineer-view">Engineer View</button>
+                  <button type="button" class="secondary-button" id="newcomer-view">Explain Like I'm New</button>
+                  <button type="button" class="secondary-button graph-kind active" data-graph-kind="file">File Graph</button>
+                  <button type="button" class="secondary-button graph-kind" data-graph-kind="symbol">Function Graph</button>
+                </div>
+                <div id="architecture"></div>
+                <svg id="graph-canvas" viewBox="0 0 900 500"></svg>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Diagrams & Context Modes</div>
+                <div class="subpanel">
+                  <h3>Block Diagram</h3>
+                  <pre id="block-diagram" class="code-view"></pre>
+                </div>
+                <div class="subpanel">
+                  <h3>Mermaid</h3>
+                  <pre id="mermaid-diagram" class="code-view"></pre>
+                </div>
+                <div class="subpanel">
+                  <h3>Claude Mode Preview</h3>
+                  <pre id="claude-mode" class="code-view large-code"></pre>
+                </div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="function-map">
+            <div class="panel">
+              <div class="panel-title">Function Cards</div>
+              <div id="function-cards" class="card-grid"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="impact">
+            <div class="grid two-col">
+              <div class="panel">
+                <div class="panel-title">Impact Analysis</div>
+                <form id="impact-form" class="inline-form">
+                  <input id="impact-target" type="text" placeholder="calculatePayment or services/payments.py" />
+                  <button type="submit">Analyze Impact</button>
+                </form>
+                <div id="impact-output"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Code Flow Simulation</div>
+                <form id="flow-form" class="inline-form">
+                  <input id="flow-target" type="text" placeholder="Start from a function like login_user" />
+                  <button type="submit">Trace Flow</button>
+                </form>
+                <div id="flow-output"></div>
+              </div>
+            </div>
+            <div class="panel stacked-panel">
+              <div class="panel-title">PR Review Mode</div>
+              <form id="diff-form">
+                <textarea id="diff-text" placeholder="Paste a git diff here to get touched files and predicted risk areas"></textarea>
+                <div class="button-row compact-row">
+                  <button type="submit">Review Diff</button>
+                </div>
+              </form>
+              <div id="diff-output"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="improvements">
+            <div class="grid two-col">
+              <div class="panel">
+                <div class="panel-title">Architecture Suggestions</div>
+                <div id="architecture-suggestions"></div>
+                <div class="subpanel">
+                  <h3>Suggested Structure</h3>
+                  <pre id="suggested-structure" class="code-view"></pre>
+                </div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Improvement Buckets</div>
+                <div id="improvement-buckets"></div>
+              </div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="ask-repo">
+            <div class="panel">
+              <div class="panel-title">Ask Repo</div>
+              <form id="ask-form" class="inline-form">
+                <input id="ask-query" type="text" placeholder="What happens when /api/analyze is called?" />
+                <button type="submit">Ask</button>
+              </form>
+              <div id="ask-output"></div>
+            </div>
+          </section>
+
+          <section class="tab-panel" data-panel="export">
+            <div class="grid two-col">
+              <div class="panel">
+                <div class="panel-title">Compression Modes</div>
+                <div id="context-modes"></div>
+              </div>
+              <div class="panel">
+                <div class="panel-title">Export Notes</div>
+                <div id="export-notes" class="meta-block">
+                  Export actions generate Claude-ready markdown, architecture reports, function maps, improvement plans,
+                  and dependency graph JSON without forcing you to paste the whole repo into an LLM.
+                </div>
+              </div>
+            </div>
+          </section>
+        </main>
+
+        <aside class="panel details-panel">
+          <div class="panel-title">Details</div>
           <div id="node-details" class="node-details">
-            Click a graph node or search result to inspect code, dependency context, and connected nodes.
+            Click a repo-map file, graph node, or function card to inspect code, dependencies, and role.
           </div>
           <div id="node-connections"></div>
           <pre id="source-viewer" class="source-viewer"></pre>
-        </div>
-      </section>
-
-      <section class="grid two-col">
-        <div class="panel">
-          <div class="panel-title">Impact Analysis</div>
-          <form id="impact-form" class="inline-form">
-            <input id="impact-target" type="text" placeholder="calculatePayment or services/payments.py" />
-            <button type="submit">Analyze Impact</button>
-          </form>
-          <div id="impact-output"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Hybrid Search</div>
-          <form id="search-form" class="inline-form">
-            <input id="search-query" type="text" placeholder="Where is login validation handled?" />
-            <button type="submit">Search</button>
-          </form>
-          <div id="search-results"></div>
-        </div>
-      </section>
-
-      <section class="grid two-col">
-        <div class="panel">
-          <div class="panel-title">Code Flow Simulation</div>
-          <form id="flow-form" class="inline-form">
-            <input id="flow-target" type="text" placeholder="Start from a function name like login_user" />
-            <button type="submit">Trace Flow</button>
-          </form>
-          <div id="flow-output"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">PR Review Mode</div>
-          <form id="diff-form">
-            <textarea id="diff-text" placeholder="Paste a git diff here to get touched files and predicted risk areas"></textarea>
-            <div class="button-row compact-row">
-              <button type="submit">Review Diff</button>
-            </div>
-          </form>
-          <div id="diff-output"></div>
-        </div>
-      </section>
-
-      <section class="grid two-col">
-        <div class="panel">
-          <div class="panel-title">Refactor Suggestions</div>
-          <div id="refactor-list"></div>
-        </div>
-        <div class="panel">
-          <div class="panel-title">Dead Code Candidates</div>
-          <div id="dead-code-list"></div>
-        </div>
+        </aside>
       </section>
     </div>
 

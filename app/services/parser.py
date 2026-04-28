@@ -19,6 +19,17 @@ IGNORED_CALL_NAMES = {
     "super",
 }
 
+JS_IMPORT_RE = re.compile(
+    r"""(?:import\s+(?:.+?)\s+from\s+['\"](?P<from>[^'\"]+)['\"])|(?:require\(\s*['\"](?P<require>[^'\"]+)['\"]\s*\))"""
+)
+JS_CLASS_RE = re.compile(r"^\s*class\s+([A-Za-z_$][A-Za-z0-9_$]*)", re.MULTILINE)
+JS_FUNCTION_PATTERNS = [
+    re.compile(r"^\s*(?:export\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(([^)]*)\)", re.MULTILINE),
+    re.compile(r"^\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*\(([^)]*)\)\s*=>", re.MULTILINE),
+    re.compile(r"^\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*function\s*\(([^)]*)\)", re.MULTILINE),
+]
+JS_CALL_RE = re.compile(r"([A-Za-z_$][A-Za-z0-9_$\.]*)\s*\(")
+
 
 def detect_language(path: Path) -> str | None:
     suffix = path.suffix.lower()
@@ -66,6 +77,8 @@ class _PythonVisitor(ast.NodeVisitor):
         qname = ".".join(self._stack + [node.name])
         symbol_kind = "method" if self._stack else kind
         record = self._make_symbol(node, node.name, qname, symbol_kind, parent=parent)
+        record.parameters = _extract_python_parameters(node)
+        record.return_hint = _extract_python_return_hint(node)
         call_visitor = _CallCollector()
         for child in node.body:
             call_visitor.visit(child)
@@ -147,23 +160,6 @@ def parse_python_file(path: Path, repo_root: Path) -> tuple[FileRecord, list[Sym
     return file_record, visitor.symbols
 
 
-IMPORT_RE = re.compile(
-    r"""(?:import\s+(?:.+?)\s+from\s+['\"](?P<from>[^'\"]+)['\"])|(?:require\(\s*['\"](?P<require>[^'\"]+)['\"]\s*\))"""
-)
-CLASS_RE = re.compile(r"^\s*class\s+([A-Za-z_$][A-Za-z0-9_$]*)", re.MULTILINE)
-FUNC_RE = re.compile(
-    r"""
-    ^\s*(?:export\s+)?function\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*\(
-    |
-    ^\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*\([^)]*\)\s*=>
-    |
-    ^\s*(?:export\s+)?const\s+([A-Za-z_$][A-Za-z0-9_$]*)\s*=\s*function\s*\(
-    """,
-    re.MULTILINE | re.VERBOSE,
-)
-CALL_RE = re.compile(r"([A-Za-z_$][A-Za-z0-9_$\.]*)\s*\(")
-
-
 def parse_javascript_file(path: Path, repo_root: Path) -> tuple[FileRecord, list[SymbolRecord]]:
     source = path.read_text(encoding="utf-8", errors="ignore")
     relative_path = path.relative_to(repo_root).as_posix()
@@ -176,29 +172,32 @@ def parse_javascript_file(path: Path, repo_root: Path) -> tuple[FileRecord, list
     )
 
     raw_imports: list[str] = []
-    for match in IMPORT_RE.finditer(source):
+    for match in JS_IMPORT_RE.finditer(source):
         import_target = match.group("from") or match.group("require")
         if import_target:
             raw_imports.append(import_target)
     file_record.raw_imports = raw_imports
 
-    symbol_ranges: list[tuple[int, int, str, str]] = []
-    for match in CLASS_RE.finditer(source):
+    symbol_ranges: list[tuple[int, int, str, str, list[str]]] = []
+    for match in JS_CLASS_RE.finditer(source):
         name = match.group(1)
         line_start = source[: match.start()].count("\n") + 1
-        symbol_ranges.append((line_start, match.start(), name, "class"))
-    for match in FUNC_RE.finditer(source):
-        name = next(group for group in match.groups() if group)
-        line_start = source[: match.start()].count("\n") + 1
-        symbol_ranges.append((line_start, match.start(), name, "function"))
+        symbol_ranges.append((line_start, match.start(), name, "class", []))
+
+    for pattern in JS_FUNCTION_PATTERNS:
+        for match in pattern.finditer(source):
+            name = match.group(1)
+            parameters = _split_js_parameters(match.group(2))
+            line_start = source[: match.start()].count("\n") + 1
+            symbol_ranges.append((line_start, match.start(), name, "function", parameters))
 
     symbol_ranges.sort(key=lambda item: item[1])
     symbols: list[SymbolRecord] = []
-    for index, (line_start, start_offset, name, kind) in enumerate(symbol_ranges):
+    for index, (line_start, start_offset, name, kind, parameters) in enumerate(symbol_ranges):
         end_offset = symbol_ranges[index + 1][1] if index + 1 < len(symbol_ranges) else len(source)
         snippet = source[start_offset:end_offset].strip()[:2000]
-        call_names = []
-        for call_match in CALL_RE.finditer(snippet):
+        call_names: list[str] = []
+        for call_match in JS_CALL_RE.finditer(snippet):
             callee = call_match.group(1)
             if callee.split(".")[-1] in IGNORED_CALL_NAMES:
                 continue
@@ -216,6 +215,41 @@ def parse_javascript_file(path: Path, repo_root: Path) -> tuple[FileRecord, list
                 line_end=line_end,
                 snippet=snippet,
                 calls=call_names,
+                parameters=parameters,
+                return_hint=_infer_js_return_hint(snippet),
             )
         )
     return file_record, symbols
+
+
+def _extract_python_parameters(node: ast.FunctionDef | ast.AsyncFunctionDef) -> list[str]:
+    params: list[str] = []
+    for arg in node.args.posonlyargs + node.args.args:
+        params.append(arg.arg)
+    if node.args.vararg:
+        params.append(f"*{node.args.vararg.arg}")
+    for arg in node.args.kwonlyargs:
+        params.append(arg.arg)
+    if node.args.kwarg:
+        params.append(f"**{node.args.kwarg.arg}")
+    return params
+
+
+def _extract_python_return_hint(node: ast.FunctionDef | ast.AsyncFunctionDef) -> str:
+    returns = getattr(node, "returns", None)
+    if returns is not None and hasattr(ast, "unparse"):
+        try:
+            return ast.unparse(returns)
+        except Exception:  # noqa: BLE001
+            return ""
+    if any(isinstance(child, ast.Return) for child in ast.walk(node)):
+        return "returns value"
+    return ""
+
+
+def _split_js_parameters(raw: str) -> list[str]:
+    return [item.strip() for item in raw.split(",") if item.strip()]
+
+
+def _infer_js_return_hint(snippet: str) -> str:
+    return "returns value" if "return " in snippet else ""

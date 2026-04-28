@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import hashlib
+import json
 import math
 import os
 import re
@@ -51,7 +52,40 @@ FRAMEWORK_HINTS = {
         "vue": "Vue",
         "svelte": "Svelte",
         "axios": "Axios",
+        "d3": "D3.js",
     },
+}
+GENERIC_NAMES = {"data", "temp", "helper", "util", "process", "handler", "manager", "thing"}
+REPO_MAP_ORDER = [
+    "Frontend / UI",
+    "Backend / API",
+    "Core Engine",
+    "Data & Persistence",
+    "Tests",
+    "Infrastructure",
+    "Configuration",
+    "Other",
+]
+SECURITY_PATTERNS = {
+    "python": [
+        ("subprocess shell", re.compile(r"shell\s*=\s*True")),
+        ("dynamic execution", re.compile(r"\b(eval|exec)\s*\(")),
+        ("pickle loading", re.compile(r"pickle\.load\s*\(")),
+    ],
+    "javascript": [
+        ("unsafe HTML injection", re.compile(r"innerHTML\s*=")),
+        ("dynamic execution", re.compile(r"\beval\s*\(")),
+    ],
+}
+PERFORMANCE_PATTERNS = {
+    "python": [
+        ("nested loops", re.compile(r"for .+:\n(?:\s+.+\n)*?\s+for .+:")),
+        ("eager glob scan", re.compile(r"\.rglob\s*\(")),
+    ],
+    "javascript": [
+        ("nested iteration", re.compile(r"\.map\([^\n]+\.map\(|\.forEach\([^\n]+\.forEach\(")),
+        ("large JSON stringify", re.compile(r"JSON\.stringify\s*\(")),
+    ],
 }
 
 
@@ -81,7 +115,6 @@ class RepositoryAnalyzer:
         self._symbols_by_id: dict[str, SymbolRecord] = {}
         self._symbols_by_name: dict[str, list[SymbolRecord]] = defaultdict(list)
         self._files_by_path: dict[str, FileRecord] = {}
-        self._chunks_by_id: dict[str, dict[str, Any]] = {}
         self._search_items: list[dict[str, Any]] = []
         self._search_matrix = None
         self._vectorizer: TfidfVectorizer | None = None
@@ -91,6 +124,12 @@ class RepositoryAnalyzer:
         self.metrics: dict[str, Any] = {}
         self.parse_errors: list[dict[str, str]] = []
         self.skipped_files: int = 0
+        self.repo_map: list[dict[str, Any]] = []
+        self.function_cards: list[dict[str, Any]] = []
+        self.improvements: dict[str, Any] = {}
+        self.health: dict[str, Any] = {}
+        self.diagrams: dict[str, str] = {}
+        self.context_modes: dict[str, str] = {}
         self._started_at = time.perf_counter()
         self._report: dict[str, Any] | None = None
 
@@ -101,7 +140,13 @@ class RepositoryAnalyzer:
         self._build_chunks()
         self._build_search_index()
         self.tech_stack = self._detect_tech_stack()
+        self.repo_map = self._build_repo_map()
+        self.function_cards = self._build_function_cards()
+        self.improvements = self._build_improvements()
+        self.health = self._build_health_scores(self.improvements)
+        self.diagrams = self._build_diagrams()
         self.metrics = self._build_metrics()
+        self.context_modes = self._build_context_modes()
         self._report = self._build_report()
         return self._report
 
@@ -125,8 +170,7 @@ class RepositoryAnalyzer:
         )
         max_workers = min(8, max(2, (os.cpu_count() or 4)))
         with ThreadPoolExecutor(max_workers=max_workers) as executor:
-            for parsed in executor.map(self._parse_path, paths):
-                file_record, symbols, source = parsed
+            for file_record, symbols, source in executor.map(self._parse_path, paths):
                 self.files.append(file_record)
                 self._files_by_path[file_record.path] = file_record
                 self.symbols.extend(symbols)
@@ -248,14 +292,13 @@ class RepositoryAnalyzer:
     def _build_chunks(self) -> None:
         chunks: list[dict[str, Any]] = []
         for file_record in self.files:
-            file_symbols = [symbol for symbol in self.symbols if symbol.file_path == file_record.path]
+            file_symbols = self._symbols_for_file(file_record.path)
             if file_symbols:
                 for symbol in file_symbols:
                     chunks.append(self._make_symbol_chunk(symbol))
             else:
                 chunks.append(self._make_file_chunk(file_record))
         self.chunks = chunks
-        self._chunks_by_id = {chunk["id"]: chunk for chunk in chunks}
 
     def _make_symbol_chunk(self, symbol: SymbolRecord) -> dict[str, Any]:
         retrieval_text = self._optimize_text_for_retrieval(symbol.snippet, symbol.language)
@@ -336,12 +379,12 @@ class RepositoryAnalyzer:
             "skipped_files": self.skipped_files,
             "search_backend": "tfidf" if self._vectorizer is not None else "keyword-fallback",
             "files_per_second": round(len(self.files) / max(duration_ms / 1000, 0.001), 2),
+            "repo_map_categories": len(self.repo_map),
+            "function_cards": len(self.function_cards),
         }
 
     def _build_report(self) -> dict[str, Any]:
         inbound_calls = Counter(target for _, target in self.symbol_call_edges)
-        folder_summaries = self.folder_summaries()
-        hierarchy = self.build_hierarchy()
         summary = {
             "repo_name": self.repo_root.name,
             "repo_root": str(self.repo_root),
@@ -384,14 +427,20 @@ class RepositoryAnalyzer:
             "files": [self._serialize_file(file_record) for file_record in self.files],
             "symbols": [self._serialize_symbol(symbol) for symbol in self.symbols],
             "chunks": self.chunks,
-            "folder_summaries": folder_summaries,
-            "hierarchy": hierarchy,
+            "repo_map": self.repo_map,
+            "function_cards": self.function_cards,
+            "folder_summaries": self.folder_summaries(),
+            "hierarchy": self.build_hierarchy(),
             "file_graph": self._graph_payload("file"),
             "symbol_graph": self._graph_payload("symbol"),
             "architecture": self.explain_architecture(),
             "newcomer_guide": self.explain_architecture(audience="newcomer"),
             "refactor_suggestions": self.refactor_suggestions(),
             "dead_code": self.dead_code_candidates(),
+            "improvements": self.improvements,
+            "health": self.health,
+            "diagrams": self.diagrams,
+            "context_modes": self.context_modes,
             "sources": self.sources,
             "parse_errors": self.parse_errors,
             "retrieval_strategy": {
@@ -409,6 +458,8 @@ class RepositoryAnalyzer:
             "imports": file_record.imports,
             "errors": file_record.errors,
             "summary": self._summarize_file(file_record),
+            "category": self._categorize_file(file_record),
+            "responsibilities": self._file_responsibilities(file_record),
         }
 
     def _serialize_symbol(self, symbol: SymbolRecord) -> dict[str, Any]:
@@ -424,6 +475,8 @@ class RepositoryAnalyzer:
             "docstring": symbol.docstring,
             "snippet": symbol.snippet,
             "calls": symbol.calls,
+            "parameters": symbol.parameters,
+            "return_hint": symbol.return_hint,
             "summary": self._summarize_symbol(symbol),
         }
 
@@ -436,6 +489,7 @@ class RepositoryAnalyzer:
                     "kind": "file",
                     "size": max(14, min(42, file_record.line_count // 6 + 14)),
                     "group": file_record.language,
+                    "category": self._categorize_file(file_record),
                 }
                 for file_record in self.files
             ]
@@ -450,6 +504,7 @@ class RepositoryAnalyzer:
                 "kind": symbol.kind,
                 "size": max(12, min(34, inbound_calls[symbol.id] * 3 + 12)),
                 "group": symbol.file_path,
+                "risk": self._estimate_symbol_risk(symbol)["score"],
             }
             for symbol in self.symbols
         ]
@@ -565,11 +620,13 @@ class RepositoryAnalyzer:
                 queue.append((callee_id, depth + 1))
 
         narrative = self._flow_narrative(steps)
+        mermaid = self._flow_mermaid(steps)
         return {
             "target": symbol.qualified_name,
             "entry_file": symbol.file_path,
             "steps": steps,
             "narrative": narrative,
+            "mermaid": mermaid,
         }
 
     def search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
@@ -584,26 +641,16 @@ class RepositoryAnalyzer:
 
         ranked: list[tuple[float, dict[str, Any]]] = []
         for index, item in enumerate(self._search_items):
-            keyword_hits = sum(1 for term in query_terms if term in item["title"].lower() or term in item["summary"].lower() or term in item["snippet"].lower())
+            keyword_hits = sum(
+                1
+                for term in query_terms
+                if term in item["title"].lower() or term in item["summary"].lower() or term in item["snippet"].lower()
+            )
             graph_boost = min(0.15, item["graph_context"].get("direct_dependents", 0) * 0.02)
             score = similarity_scores[index] * 0.68 + min(keyword_hits * 0.12, 0.32) + graph_boost
             ranked.append((score, item))
 
-        results = []
-        for score, item in sorted(ranked, key=lambda pair: pair[0], reverse=True)[:limit]:
-            results.append(
-                {
-                    "id": item["id"],
-                    "kind": item["kind"],
-                    "level": item["level"],
-                    "name": item["title"],
-                    "file_path": item["file_path"],
-                    "snippet": item["snippet"],
-                    "score": round(float(score), 4),
-                    "explanation": self._search_explanation(item),
-                }
-            )
-        return results
+        return [self._serialize_search_result(score, item) for score, item in sorted(ranked, key=lambda pair: pair[0], reverse=True)[:limit]]
 
     def _fallback_search(self, query: str, limit: int = 8) -> list[dict[str, Any]]:
         query_terms = {term.lower() for term in query.split() if term.strip()}
@@ -613,27 +660,19 @@ class RepositoryAnalyzer:
             score = sum(1 for term in query_terms if term in haystack)
             if score:
                 ranked.append((float(score), item))
-        results = []
-        for score, item in sorted(ranked, key=lambda pair: pair[0], reverse=True)[:limit]:
-            results.append(
-                {
-                    "id": item["id"],
-                    "kind": item["kind"],
-                    "level": item["level"],
-                    "name": item["title"],
-                    "file_path": item["file_path"],
-                    "snippet": item["snippet"],
-                    "score": round(float(score), 4),
-                    "explanation": self._search_explanation(item),
-                }
-            )
-        return results
+        return [self._serialize_search_result(score, item) for score, item in sorted(ranked, key=lambda pair: pair[0], reverse=True)[:limit]]
 
-    def _search_explanation(self, item: dict[str, Any]) -> str:
-        if item["kind"] == "file":
-            file_record = self._files_by_path[item["file_path"]]
-            return f"{file_record.path} is a {file_record.language} file with {file_record.line_count} lines and {len(file_record.imports)} resolved dependencies."
-        return f"{item['title']} is a {item['level']} chunk in {item['file_path']} with graph-backed context included in retrieval."
+    def _serialize_search_result(self, score: float, item: dict[str, Any]) -> dict[str, Any]:
+        return {
+            "id": item["id"],
+            "kind": item["kind"],
+            "level": item["level"],
+            "name": item["title"],
+            "file_path": item["file_path"],
+            "snippet": item["snippet"],
+            "score": round(float(score), 4),
+            "explanation": self._search_explanation(item),
+        }
 
     def explain_architecture(self, audience: str = "engineer") -> dict[str, Any]:
         central_files = sorted(self.files, key=lambda item: len(self.file_importers.get(item.path, set())) + len(item.imports), reverse=True)[:5]
@@ -643,8 +682,8 @@ class RepositoryAnalyzer:
             f"Highest coordination load sits in {', '.join(item.path for item in central_files[:3]) or 'no dominant files'}, which makes these strong architecture entry points."
         )
         newcomer_narrative = (
-            f"If you're new to this codebase, start with {', '.join(self.entry_points[:3]) or (central_files[0].path if central_files else 'the central files')} to understand how requests or program startup flow through the system. "
-            f"Then look at the busiest folders: {self._directory_summary(4)}."
+            f"If you're new to this codebase, start with {', '.join(self.entry_points[:3]) or (central_files[0].path if central_files else 'the central files')} to understand how requests or startup flow through the system. "
+            f"Then move into the busiest folders: {self._directory_summary(4)}."
         )
         return {
             "headline": headline,
@@ -667,6 +706,8 @@ class RepositoryAnalyzer:
         if not symbol:
             raise KeyError(f"No symbol matched '{target}'.")
         callers = [self._symbols_by_id[item].qualified_name for item in sorted(self.symbol_callers.get(symbol.id, set()))]
+        calls = [self._symbols_by_id[item].qualified_name for item in sorted(self.symbol_callees.get(symbol.id, set()))]
+        card = self._build_function_card(symbol)
         if audience == "newcomer":
             summary = (
                 f"{symbol.qualified_name} is a {symbol.kind} in {symbol.file_path}. "
@@ -681,9 +722,10 @@ class RepositoryAnalyzer:
             "file_path": symbol.file_path,
             "summary": summary,
             "callers": callers,
-            "calls": symbol.calls,
+            "calls": calls,
             "docstring": symbol.docstring,
             "snippet": symbol.snippet,
+            "card": card,
         }
 
     def explain_file(self, target: str, audience: str = "engineer") -> dict[str, Any]:
@@ -707,6 +749,8 @@ class RepositoryAnalyzer:
             "dependents": dependents,
             "errors": file_record.errors,
             "source_preview": self.sources.get(file_record.path, "")[:2000],
+            "responsibilities": self._file_responsibilities(file_record),
+            "category": self._categorize_file(file_record),
         }
 
     def dead_code_candidates(self) -> list[dict[str, Any]]:
@@ -734,7 +778,7 @@ class RepositoryAnalyzer:
     def refactor_suggestions(self) -> list[dict[str, Any]]:
         suggestions = []
         for file_record in sorted(self.files, key=lambda item: item.line_count, reverse=True):
-            symbol_count = sum(1 for symbol in self.symbols if symbol.file_path == file_record.path)
+            symbol_count = len(self._symbols_for_file(file_record.path))
             if file_record.line_count > 280 or symbol_count > 12:
                 suggestions.append(
                     {
@@ -746,7 +790,7 @@ class RepositoryAnalyzer:
                     }
                 )
 
-        duplicate_names = Counter(symbol.name for symbol in self.symbols if symbol.kind in {"function", "method"})
+        duplicate_names = Counter(symbol.name for symbol in self.symbols if symbol.kind in {"function", "method", "async_function"})
         for name, count in duplicate_names.items():
             if count >= 3:
                 suggestions.append(
@@ -772,9 +816,8 @@ class RepositoryAnalyzer:
                             "kind": symbol.kind,
                             "summary": self._summarize_symbol(symbol),
                         }
-                        for symbol in self.symbols
-                        if symbol.file_path == file_record.path
-                    ][:5],
+                        for symbol in self._symbols_for_file(file_record.path)[:5]
+                    ],
                 }
             )
         return {"folders": list(folders.values())[:20]}
@@ -782,7 +825,7 @@ class RepositoryAnalyzer:
     def folder_summaries(self) -> list[dict[str, Any]]:
         summaries = []
         for folder, count in self.directory_counts.most_common(12):
-            files = [item for item in self.files if (str(Path(item.path).parent) if str(Path(item.path).parent) != "." else ".") == folder]
+            files = [item for item in self.files if self._folder_name(item.path) == folder]
             key_files = ", ".join(item.path for item in sorted(files, key=lambda entry: entry.line_count, reverse=True)[:3])
             summaries.append(
                 {
@@ -809,6 +852,873 @@ class RepositoryAnalyzer:
             "summary": f"The diff touches {len(touched_files)} files. Highest predicted risk is {max(risk_scores) if risk_scores else 0}.",
             "risk_areas": file_impacts,
         }
+
+    def ask_repo(self, question: str) -> dict[str, Any]:
+        question = question.strip()
+        if not question:
+            return {
+                "mode": "empty",
+                "answer": "Ask about architecture, risky functions, where logic lives, or what happens when a flow runs.",
+                "evidence": [],
+                "next_steps": ["Try: What happens when /api/analyze is called?"],
+            }
+
+        target = self._extract_target_from_text(question)
+        lowered = question.lower()
+
+        if any(phrase in lowered for phrase in ["what happens", "flow", "when "]):
+            if target and self._match_symbol(target):
+                flow = self.flow_analysis(target)
+                return {
+                    "mode": "flow",
+                    "answer": flow["narrative"],
+                    "evidence": [f"{step['symbol']} ({step['file_path']})" for step in flow["steps"][:6]],
+                    "next_steps": ["Open the first two functions in the flow and inspect their call chain."],
+                    "mermaid": flow["mermaid"],
+                }
+
+        if any(phrase in lowered for phrase in ["change", "modify", "break", "risky"]):
+            if target:
+                try:
+                    impact = self.impact_analysis(target)
+                    return {
+                        "mode": "impact",
+                        "answer": impact["explanation"],
+                        "evidence": impact["affected_files"][:8],
+                        "next_steps": impact["suggested_tests"] or ["No matched tests; add coverage before refactoring."],
+                    }
+                except KeyError:
+                    pass
+            hotspots = self.improvements.get("risk_hotspots", [])[:5]
+            return {
+                "mode": "risk-hotspots",
+                "answer": "These are the highest-risk areas based on dependency centrality, file size, and test gaps.",
+                "evidence": [f"{item['target']} ({item['score']})" for item in hotspots],
+                "next_steps": ["Inspect the top hotspot and the tests covering it."],
+            }
+
+        if any(phrase in lowered for phrase in ["refactor", "improve", "cleanup"]):
+            suggestions = self.improvements.get("architecture_suggestions", [])[:4]
+            refactors = self.refactor_suggestions()[:4]
+            evidence = [item["current_issue"] for item in suggestions] + [item["target"] for item in refactors]
+            return {
+                "mode": "refactor",
+                "answer": "The main refactor pressure comes from oversized coordinators, missing boundaries, and risky hotspots.",
+                "evidence": evidence[:8],
+                "next_steps": [item.get("suggestion", item.get("reason", "Review suggested refactors.")) for item in suggestions[:3]] or ["Start by splitting the most central file by responsibility."],
+            }
+
+        if any(phrase in lowered for phrase in ["architecture", "explain this repo", "interview"]):
+            architecture = self.explain_architecture(audience="newcomer" if "interview" in lowered else "engineer")
+            return {
+                "mode": "architecture",
+                "answer": architecture["narrative"],
+                "evidence": [item["path"] for item in architecture["central_files"][:5]],
+                "next_steps": ["Start with the top entry point, then inspect the busiest dependency hub."],
+            }
+
+        search_results = self.search(question, limit=5)
+        if not search_results:
+            return {
+                "mode": "fallback",
+                "answer": "I couldn't find a strong direct match. Try naming a function, file, or architecture concern explicitly.",
+                "evidence": [],
+                "next_steps": ["Try: Where is authentication handled?", "Try: Which files are risky?"],
+            }
+
+        return {
+            "mode": "search",
+            "answer": f"The strongest match is {search_results[0]['name']} in {search_results[0]['file_path']}.",
+            "evidence": [f"{item['name']} ({item['file_path']})" for item in search_results],
+            "next_steps": ["Open the top result and follow its imports or callees."],
+        }
+
+    def export_pack(self, kind: str, diff_text: str | None = None) -> dict[str, Any]:
+        kind = kind.lower().strip()
+        if kind == "claude":
+            files = [
+                self._export_file("repo_context.md", self._repo_context_markdown()),
+                self._export_file("architecture.md", self._architecture_markdown()),
+                self._export_file("function_map.md", self._function_map_markdown()),
+                self._export_file("improvement_plan.md", self._improvement_plan_markdown()),
+                self._export_file("dependency_graph.json", self._dependency_graph_json(), "application/json"),
+            ]
+            return {"kind": kind, "files": files}
+
+        if kind == "interview":
+            return {
+                "kind": kind,
+                "files": [self._export_file("interview_pack.md", self._interview_pack_markdown())],
+            }
+
+        if kind == "architecture":
+            return {
+                "kind": kind,
+                "files": [
+                    self._export_file("architecture.md", self._architecture_markdown()),
+                    self._export_file("architecture_diagram.mmd", self.diagrams.get("pipeline_mermaid", ""), "text/plain"),
+                ],
+            }
+
+        if kind == "pr":
+            return {
+                "kind": kind,
+                "files": [self._export_file("pr_review_context.md", self._pr_review_context_markdown(diff_text or ""))],
+            }
+
+        if kind == "repo-intelligence-pack":
+            return {
+                "kind": kind,
+                "files": [
+                    self._export_file("repo_context.md", self._repo_context_markdown()),
+                    self._export_file("architecture.md", self._architecture_markdown()),
+                    self._export_file("function_map.md", self._function_map_markdown()),
+                    self._export_file("improvement_plan.md", self._improvement_plan_markdown()),
+                    self._export_file("architecture_diagram.mmd", self.diagrams.get("pipeline_mermaid", ""), "text/plain"),
+                    self._export_file("dependency_graph.json", self._dependency_graph_json(), "application/json"),
+                ],
+            }
+
+        raise KeyError(f"Unsupported export kind '{kind}'.")
+
+    def _build_repo_map(self) -> list[dict[str, Any]]:
+        categories: dict[str, list[dict[str, Any]]] = defaultdict(list)
+        for file_record in self.files:
+            categories[self._categorize_file(file_record)].append(
+                {
+                    "path": file_record.path,
+                    "summary": self._summarize_file(file_record),
+                    "responsibilities": self._file_responsibilities(file_record),
+                    "symbol_count": len(self._symbols_for_file(file_record.path)),
+                    "imports": len(file_record.imports),
+                }
+            )
+        ordered = []
+        for category in REPO_MAP_ORDER:
+            if categories.get(category):
+                ordered.append({"name": category, "files": sorted(categories[category], key=lambda item: item["path"])})
+        return ordered
+
+    def _build_function_cards(self) -> list[dict[str, Any]]:
+        cards = []
+        for symbol in self.symbols:
+            if symbol.kind not in {"function", "async_function", "method"}:
+                continue
+            cards.append(self._build_function_card(symbol))
+        cards.sort(key=lambda item: (-item["risk_score"], item["file_path"], item["function"]))
+        return cards
+
+    def _build_function_card(self, symbol: SymbolRecord) -> dict[str, Any]:
+        risk = self._estimate_symbol_risk(symbol)
+        calls = [self._symbols_by_id[item].qualified_name for item in sorted(self.symbol_callees.get(symbol.id, set()))]
+        inputs = symbol.parameters or ["None inferred"]
+        return {
+            "id": symbol.id,
+            "function": symbol.qualified_name,
+            "file_path": symbol.file_path,
+            "purpose": self._symbol_purpose(symbol),
+            "inputs": inputs,
+            "output": symbol.return_hint or "Return type not inferred",
+            "calls": calls[:8],
+            "risk_score": risk["score"],
+            "risk_label": risk["label"],
+            "why_risky": risk["reason"],
+            "summary": self._summarize_symbol(symbol),
+        }
+
+    def _build_improvements(self) -> dict[str, Any]:
+        large_files = self._large_file_findings()
+        god_functions = self._god_function_findings()
+        missing_tests = self._missing_test_findings()
+        risky_dependencies = self._risky_dependency_findings()
+        duplicate_logic = self._duplicate_logic_findings()
+        poor_naming = self._poor_naming_findings()
+        dead_code = self.dead_code_candidates()
+        architecture_bottlenecks = self._architecture_bottleneck_findings()
+        security_issues = self._security_findings()
+        performance_issues = self._performance_findings()
+        architecture_suggestions = self._architecture_suggestions(large_files, architecture_bottlenecks, god_functions)
+        risk_hotspots = self._risk_hotspots(risky_dependencies, architecture_bottlenecks, god_functions, missing_tests)
+
+        return {
+            "counts": {
+                "large_files": len(large_files),
+                "god_functions": len(god_functions),
+                "missing_tests": len(missing_tests),
+                "risk_hotspots": len(risk_hotspots),
+                "dead_code": len(dead_code),
+            },
+            "sections": {
+                "code_smells": large_files + god_functions + poor_naming,
+                "large_files": large_files,
+                "god_functions": god_functions,
+                "missing_tests": missing_tests,
+                "risky_dependencies": risky_dependencies,
+                "duplicate_logic": duplicate_logic,
+                "poor_naming": poor_naming,
+                "dead_code": dead_code,
+                "architecture_bottlenecks": architecture_bottlenecks,
+                "security_issues": security_issues,
+                "performance_issues": performance_issues,
+            },
+            "risk_hotspots": risk_hotspots,
+            "architecture_suggestions": architecture_suggestions,
+            "suggested_structure": self._suggested_structure(),
+        }
+
+    def _build_health_scores(self, improvements: dict[str, Any]) -> dict[str, Any]:
+        counts = improvements.get("counts", {})
+        large_files = counts.get("large_files", 0)
+        god_functions = counts.get("god_functions", 0)
+        missing_tests = counts.get("missing_tests", 0)
+        dead_code = counts.get("dead_code", 0)
+        risk_hotspots = counts.get("risk_hotspots", 0)
+
+        architecture_health = max(10, 100 - large_files * 7 - risk_hotspots * 5 - len(self.parse_errors) * 6)
+        maintainability_score = max(10, 100 - god_functions * 7 - missing_tests * 3 - dead_code * 2)
+
+        if maintainability_score >= 80:
+            maintainability = "High"
+        elif maintainability_score >= 60:
+            maintainability = "Medium"
+        else:
+            maintainability = "Low"
+
+        return {
+            "architecture_health": architecture_health,
+            "maintainability_score": maintainability_score,
+            "maintainability": maintainability,
+            "risk_hotspots": risk_hotspots,
+            "dead_code_candidates": dead_code,
+            "missing_tests": missing_tests,
+        }
+
+    def _build_diagrams(self) -> dict[str, str]:
+        return {
+            "pipeline_mermaid": self._pipeline_mermaid(),
+            "repo_map_mermaid": self._repo_map_mermaid(),
+            "block_diagram": self._block_diagram_text(),
+        }
+
+    def _build_context_modes(self) -> dict[str, str]:
+        return {
+            "tiny": self._tiny_summary(),
+            "medium": self._medium_summary(),
+            "deep": self._deep_summary(),
+            "claude": self._claude_summary(),
+            "interview": self._interview_summary(),
+        }
+
+    def _symbols_for_file(self, file_path: str) -> list[SymbolRecord]:
+        return [symbol for symbol in self.symbols if symbol.file_path == file_path]
+
+    def _folder_name(self, file_path: str) -> str:
+        parent = str(Path(file_path).parent)
+        return "." if parent == "." else parent
+
+    def _categorize_file(self, file_record: FileRecord) -> str:
+        path = file_record.path.lower()
+        if path.startswith("static/") or any(token in path for token in ["frontend", "client", "ui", ".css", ".tsx", ".jsx"]):
+            return "Frontend / UI"
+        if path.startswith("tests/") or "/tests/" in path or file_record.path.startswith("test_"):
+            return "Tests"
+        if path.startswith("app/main") or "/api/" in path or path.endswith("main.py") or path.endswith("server.js"):
+            return "Backend / API"
+        if any(token in path for token in ["models", "db", "database", "schema", "repository"]):
+            return "Data & Persistence"
+        if any(token in path for token in ["docker", "compose", "terraform", "k8s", "infra", "workflow"]):
+            return "Infrastructure"
+        if any(token in path for token in ["config", "settings", ".env"]):
+            return "Configuration"
+        if any(token in path for token in ["analyzer", "parser", "graph", "retrieval", "services"]):
+            return "Core Engine"
+        return "Other"
+
+    def _file_responsibilities(self, file_record: FileRecord) -> list[str]:
+        source = self.sources.get(file_record.path, "")
+        symbols = self._symbols_for_file(file_record.path)
+        responsibilities: list[str] = []
+
+        if file_record.path.endswith("app/main.py"):
+            responsibilities.extend([self._route_responsibility(route) for route in re.findall(r'@app\.(?:get|post)\("([^"]+)"\)', source)[:4]])
+        if "fetch(" in source:
+            responsibilities.append("handles API calls")
+        if "d3" in source.lower() or "graph" in source.lower():
+            responsibilities.append("renders graphs")
+        if "state =" in source or "const state =" in source:
+            responsibilities.append("manages report state")
+        if any(token in file_record.path.lower() for token in ["analyzer", "parser"]):
+            responsibilities.append("drives repository analysis")
+        if any(token in source for token in ["impact_analysis", "flow_analysis", "search("]):
+            responsibilities.append("performs impact, flow, or search reasoning")
+        if any(token in file_record.path.lower() for token in ["repository", "materialize"]):
+            responsibilities.append("materializes repository input")
+        if not responsibilities and symbols:
+            responsibilities.append(f"defines {len(symbols)} key symbols")
+        if not responsibilities and file_record.imports:
+            responsibilities.append(f"coordinates {len(file_record.imports)} internal dependencies")
+        if not responsibilities:
+            responsibilities.append("supports the analyzed codebase")
+        return responsibilities[:4]
+
+    def _route_responsibility(self, route: str) -> str:
+        if route == "/api/analyze":
+            return "accepts repo input and starts analysis"
+        if route.endswith("/impact"):
+            return "computes change impact"
+        if route.endswith("/flow"):
+            return "traces function flow"
+        if route.endswith("/search"):
+            return "answers structural code search"
+        return f"serves {route}"
+
+    def _symbol_purpose(self, symbol: SymbolRecord) -> str:
+        if symbol.docstring:
+            return symbol.docstring.strip().splitlines()[0][:180]
+        action = self._action_phrase(symbol.name)
+        file_category = self._categorize_file(self._files_by_path[symbol.file_path])
+        calls = [self._symbols_by_id[item].qualified_name for item in sorted(self.symbol_callees.get(symbol.id, set()))][:3]
+        if calls:
+            return f"{action.capitalize()} within the {file_category.lower()} layer, then delegates to {', '.join(calls)}."
+        return f"{action.capitalize()} within the {file_category.lower()} layer."
+
+    def _action_phrase(self, name: str) -> str:
+        lowered = name.lower()
+        if lowered.startswith(("get", "fetch", "load")):
+            return f"fetches or loads {self._friendly_name(name)}"
+        if lowered.startswith(("create", "build", "make")):
+            return f"builds {self._friendly_name(name)}"
+        if lowered.startswith(("parse", "extract")):
+            return f"parses or extracts {self._friendly_name(name)}"
+        if lowered.startswith(("validate", "check")):
+            return f"validates {self._friendly_name(name)}"
+        if lowered.startswith(("handle", "run", "process")):
+            return f"handles {self._friendly_name(name)}"
+        if lowered.startswith(("render", "show")):
+            return f"renders {self._friendly_name(name)}"
+        if lowered.startswith(("analyze", "summarize", "explain")):
+            return f"analyzes {self._friendly_name(name)}"
+        return f"drives {self._friendly_name(name)}"
+
+    def _friendly_name(self, name: str) -> str:
+        spaced = re.sub(r"([a-z0-9])([A-Z])", r"\1 \2", name).replace("_", " ")
+        return spaced.strip().lower()
+
+    def _estimate_symbol_risk(self, symbol: SymbolRecord) -> dict[str, Any]:
+        direct = len(self.symbol_callers.get(symbol.id, set()))
+        indirect, depth = self._reverse_reachable(symbol.id, self.symbol_callers)
+        score = min(
+            100,
+            direct * 12 + max(len(indirect) - direct, 0) * 4 + self._file_criticality(symbol.file_path) * 15 + min(len(symbol.parameters), 6) * 4,
+        )
+        if score >= 75:
+            label = "High"
+        elif score >= 45:
+            label = "Medium"
+        else:
+            label = "Low"
+        reason = f"{direct} direct dependents, depth {depth}, and file criticality {self._file_criticality(symbol.file_path)}."
+        return {"score": score, "label": label, "reason": reason}
+
+    def _large_file_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for file_record in self.files:
+            symbol_count = len(self._symbols_for_file(file_record.path))
+            if file_record.line_count < 220 and symbol_count < 10:
+                continue
+            findings.append(
+                {
+                    "target": file_record.path,
+                    "severity": "medium" if file_record.line_count < 320 else "high",
+                    "reason": f"{file_record.line_count} lines and {symbol_count} extracted symbols make this file harder to reason about.",
+                }
+            )
+        return findings[:12]
+
+    def _god_function_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for symbol in self.symbols:
+            if symbol.kind not in {"function", "async_function", "method"}:
+                continue
+            span = symbol.line_end - symbol.line_start + 1
+            if span < 35 and len(symbol.parameters) < 5 and len(symbol.calls) < 7:
+                continue
+            findings.append(
+                {
+                    "target": symbol.qualified_name,
+                    "severity": "medium" if span < 60 else "high",
+                    "reason": f"Spans {span} lines, takes {len(symbol.parameters)} inputs, and calls {len(symbol.calls)} functions.",
+                }
+            )
+        return findings[:12]
+
+    def _missing_test_findings(self) -> list[dict[str, Any]]:
+        test_files = [file_record.path.lower() for file_record in self.files if "test" in file_record.path.lower()]
+        findings = []
+        for file_record in self.files:
+            lower_path = file_record.path.lower()
+            if "test" in lower_path:
+                continue
+            stem = Path(file_record.path).stem.lower()
+            if any(stem in test_path for test_path in test_files):
+                continue
+            findings.append(
+                {
+                    "target": file_record.path,
+                    "severity": "medium",
+                    "reason": "No obvious matching test file was found by filename or path heuristic.",
+                }
+            )
+        return findings[:15]
+
+    def _risky_dependency_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for file_record in self.files:
+            fan_in = len(self.file_importers.get(file_record.path, set()))
+            fan_out = len(file_record.imports)
+            score = fan_in * 2 + fan_out + math.ceil(file_record.line_count / 120)
+            if score < 6:
+                continue
+            findings.append(
+                {
+                    "target": file_record.path,
+                    "score": score,
+                    "reason": f"fan-in {fan_in}, fan-out {fan_out}, {file_record.line_count} lines.",
+                }
+            )
+        findings.sort(key=lambda item: item["score"], reverse=True)
+        return findings[:12]
+
+    def _duplicate_logic_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        snippet_buckets: dict[str, list[SymbolRecord]] = defaultdict(list)
+        for symbol in self.symbols:
+            if symbol.kind not in {"function", "async_function", "method"}:
+                continue
+            normalized = re.sub(r"\s+", " ", symbol.snippet).strip().lower()
+            if len(normalized) < 80:
+                continue
+            digest = hashlib.sha1(normalized.encode("utf-8")).hexdigest()
+            snippet_buckets[digest].append(symbol)
+
+        for items in snippet_buckets.values():
+            if len(items) < 2:
+                continue
+            names = ", ".join(item.qualified_name for item in items[:3])
+            findings.append(
+                {
+                    "target": items[0].qualified_name,
+                    "severity": "medium",
+                    "reason": f"Similar function bodies found across {len(items)} symbols, including {names}.",
+                }
+            )
+        return findings[:10]
+
+    def _poor_naming_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for symbol in self.symbols:
+            base = symbol.name.lower()
+            if base in GENERIC_NAMES or len(base) <= 2:
+                findings.append(
+                    {
+                        "target": symbol.qualified_name,
+                        "severity": "low",
+                        "reason": "The symbol name is generic and may hide the intent of the code path.",
+                    }
+                )
+        return findings[:12]
+
+    def _architecture_bottleneck_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for file_record in self.files:
+            fan_in = len(self.file_importers.get(file_record.path, set()))
+            fan_out = len(file_record.imports)
+            if fan_in + fan_out < 4:
+                continue
+            if file_record.line_count < 120:
+                continue
+            findings.append(
+                {
+                    "target": file_record.path,
+                    "score": fan_in + fan_out + math.ceil(file_record.line_count / 150),
+                    "reason": f"Central dependency hub with {fan_in} incoming and {fan_out} outgoing links.",
+                }
+            )
+        findings.sort(key=lambda item: item["score"], reverse=True)
+        return findings[:10]
+
+    def _security_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for file_record in self.files:
+            source = self.sources.get(file_record.path, "")
+            for label, pattern in SECURITY_PATTERNS.get(file_record.language, []):
+                if pattern.search(source):
+                    findings.append(
+                        {
+                            "target": file_record.path,
+                            "severity": "high",
+                            "reason": f"Possible security hotspot: {label}.",
+                        }
+                    )
+        return findings[:10]
+
+    def _performance_findings(self) -> list[dict[str, Any]]:
+        findings = []
+        for file_record in self.files:
+            source = self.sources.get(file_record.path, "")
+            for label, pattern in PERFORMANCE_PATTERNS.get(file_record.language, []):
+                if pattern.search(source):
+                    findings.append(
+                        {
+                            "target": file_record.path,
+                            "severity": "medium",
+                            "reason": f"Potential performance concern: {label}.",
+                        }
+                    )
+        return findings[:10]
+
+    def _architecture_suggestions(
+        self,
+        large_files: list[dict[str, Any]],
+        architecture_bottlenecks: list[dict[str, Any]],
+        god_functions: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        suggestions = []
+        if large_files:
+            suggestions.append(
+                {
+                    "current_issue": f"{large_files[0]['target']} is acting as a large coordinator file.",
+                    "suggestion": "Split route handling, parsing, graph logic, and exports into dedicated modules.",
+                }
+            )
+        if architecture_bottlenecks:
+            suggestions.append(
+                {
+                    "current_issue": f"{architecture_bottlenecks[0]['target']} is a dependency bottleneck.",
+                    "suggestion": "Introduce clearer boundaries between API, core analysis, retrieval, and reporting layers.",
+                }
+            )
+        if god_functions:
+            suggestions.append(
+                {
+                    "current_issue": f"{god_functions[0]['target']} is taking on too much logic in one place.",
+                    "suggestion": "Extract subroutines for data preparation, risk scoring, and response formatting.",
+                }
+            )
+        suggestions.append(
+            {
+                "current_issue": "The repository would benefit from stronger separation between parsing, graphing, and reporting concerns.",
+                "suggestion": "Consider a structure like app/api, app/core, app/parsers, app/graph, app/retrieval, and app/reports.",
+            }
+        )
+        return suggestions[:6]
+
+    def _risk_hotspots(
+        self,
+        risky_dependencies: list[dict[str, Any]],
+        architecture_bottlenecks: list[dict[str, Any]],
+        god_functions: list[dict[str, Any]],
+        missing_tests: list[dict[str, Any]],
+    ) -> list[dict[str, Any]]:
+        hotspots: list[dict[str, Any]] = []
+        for item in risky_dependencies[:4]:
+            hotspots.append({"target": item["target"], "score": item["score"], "reason": item["reason"]})
+        for item in architecture_bottlenecks[:3]:
+            hotspots.append({"target": item["target"], "score": item["score"] + 4, "reason": item["reason"]})
+        for item in god_functions[:3]:
+            hotspots.append({"target": item["target"], "score": 55, "reason": item["reason"]})
+        for item in missing_tests[:3]:
+            hotspots.append({"target": item["target"], "score": 48, "reason": item["reason"]})
+        hotspots.sort(key=lambda item: item["score"], reverse=True)
+        return hotspots[:8]
+
+    def _suggested_structure(self) -> str:
+        return (
+            "app/\n"
+            "  api/\n"
+            "  core/\n"
+            "  parsers/\n"
+            "  graph/\n"
+            "  retrieval/\n"
+            "  reports/\n"
+            "static/\n"
+            "tests/\n"
+        )
+
+    def _pipeline_mermaid(self) -> str:
+        return (
+            "flowchart TD\n"
+            "A[Repo Input] --> B[Materialize Repository]\n"
+            "B --> C[Parse Files]\n"
+            "C --> D[Extract Symbols]\n"
+            "D --> E[Build Dependency Graph]\n"
+            "E --> F[Generate Report]\n"
+            "F --> G[Repo Intelligence Pack]\n"
+            "G --> H[Ask Repo / Exports / UI]\n"
+        )
+
+    def _repo_map_mermaid(self) -> str:
+        lines = ["flowchart LR"]
+        root = self.repo_root.name.replace("-", "_")
+        lines.append(f"root[{self.repo_root.name}]")
+        for index, category in enumerate(self.repo_map[:5], start=1):
+            cat_id = f"cat{index}"
+            lines.append(f"root --> {cat_id}[{category['name']}]")
+            for item_index, file_item in enumerate(category["files"][:3], start=1):
+                file_id = f"{cat_id}_{item_index}"
+                label = file_item["path"].replace('"', "")
+                lines.append(f"{cat_id} --> {file_id}[{label}]")
+        return "\n".join(lines) + "\n"
+
+    def _block_diagram_text(self) -> str:
+        return (
+            "User\n"
+            "  ↓\n"
+            "Frontend\n"
+            "  ↓\n"
+            "FastAPI /api/analyze\n"
+            "  ↓\n"
+            "Repository Materializer\n"
+            "  ↓\n"
+            "Parser\n"
+            "  ↓\n"
+            "Symbol Extractor\n"
+            "  ↓\n"
+            "Dependency Graph\n"
+            "  ↓\n"
+            "Search / Impact / Flow Engine\n"
+            "  ↓\n"
+            "UI Report\n"
+        )
+
+    def _tiny_summary(self) -> str:
+        central = ", ".join(item["path"] for item in self.explain_architecture()["central_files"][:3]) or "none"
+        return (
+            f"{self.repo_root.name} is a {', '.join(self.tech_stack) or 'multi-language'} repo with {len(self.files)} source files. "
+            f"Start at {', '.join(self.entry_points[:2]) or central}. Main hotspots: {central}."
+        )
+
+    def _medium_summary(self) -> str:
+        return self._repo_context_markdown(include_function_cards=False, max_function_cards=0)
+
+    def _deep_summary(self) -> str:
+        return self._repo_context_markdown(include_function_cards=True, max_function_cards=20)
+
+    def _claude_summary(self) -> str:
+        return self._repo_context_markdown(include_function_cards=True, max_function_cards=12, compressed=True)
+
+    def _interview_summary(self) -> str:
+        return self._interview_pack_markdown()
+
+    def _repo_context_markdown(
+        self,
+        *,
+        include_function_cards: bool = True,
+        max_function_cards: int = 10,
+        compressed: bool = False,
+    ) -> str:
+        lines = [
+            f"# Repo Context: {self.repo_root.name}",
+            "",
+            f"- Branch: {self.branch}",
+            f"- Files analyzed: {len(self.files)}",
+            f"- Functions analyzed: {sum(1 for symbol in self.symbols if symbol.kind in {'function', 'async_function', 'method'})}",
+            f"- Tech stack: {', '.join(self.tech_stack) or 'Not inferred'}",
+            f"- Entry points: {', '.join(self.entry_points) or 'Not inferred'}",
+            f"- Architecture health: {self.health.get('architecture_health', 'n/a')}/100",
+            f"- Maintainability: {self.health.get('maintainability', 'Unknown')}",
+            "",
+            "## Repo Map",
+            "",
+        ]
+        for category in self.repo_map:
+            lines.append(f"### {category['name']}")
+            for item in category["files"][: (2 if compressed else 4)]:
+                lines.append(f"- `{item['path']}`")
+                for responsibility in item["responsibilities"][: (2 if compressed else 3)]:
+                    lines.append(f"  - {responsibility}")
+            lines.append("")
+
+        lines.extend([
+            "## Architecture Summary",
+            "",
+            self.explain_architecture(audience="engineer")["narrative"],
+            "",
+            "## Risk Hotspots",
+            "",
+        ])
+        for item in self.improvements.get("risk_hotspots", [])[:6]:
+            lines.append(f"- `{item['target']}` ({item['score']}): {item['reason']}")
+        lines.append("")
+
+        if include_function_cards:
+            lines.extend(["## Function Cards", ""])
+            for card in self.function_cards[:max_function_cards]:
+                lines.append(f"### {card['function']}")
+                lines.append(f"- File: `{card['file_path']}`")
+                lines.append(f"- Purpose: {card['purpose']}")
+                lines.append(f"- Inputs: {', '.join(card['inputs'])}")
+                lines.append(f"- Output: {card['output']}")
+                if card["calls"]:
+                    lines.append(f"- Calls: {', '.join(card['calls'][:5])}")
+                lines.append(f"- Risk: {card['risk_label']} ({card['risk_score']}) because {card['why_risky']}")
+                lines.append("")
+
+        lines.extend([
+            "## Improvement Plan",
+            "",
+            self._improvement_plan_markdown(include_header=False),
+        ])
+        return "\n".join(lines).strip() + "\n"
+
+    def _architecture_markdown(self) -> str:
+        architecture = self.explain_architecture(audience="engineer")
+        lines = [
+            f"# Architecture Report: {self.repo_root.name}",
+            "",
+            architecture["headline"],
+            "",
+            "## Narrative",
+            "",
+            architecture["narrative"],
+            "",
+            "## Central Files",
+            "",
+        ]
+        for item in architecture["central_files"]:
+            lines.append(f"- `{item['path']}` | fan-in {item['fan_in']} | fan-out {item['fan_out']} | {item['summary']}")
+        lines.extend([
+            "",
+            "## Mermaid",
+            "",
+            "```mermaid",
+            self.diagrams.get("pipeline_mermaid", "").rstrip(),
+            "```",
+            "",
+            "## Repo Map",
+            "",
+        ])
+        for category in self.repo_map:
+            lines.append(f"### {category['name']}")
+            for item in category["files"][:4]:
+                lines.append(f"- `{item['path']}`")
+                for responsibility in item["responsibilities"][:3]:
+                    lines.append(f"  - {responsibility}")
+            lines.append("")
+        return "\n".join(lines).strip() + "\n"
+
+    def _function_map_markdown(self) -> str:
+        lines = [f"# Function Map: {self.repo_root.name}", ""]
+        for card in self.function_cards[:30]:
+            lines.extend([
+                f"## {card['function']}",
+                f"- File: `{card['file_path']}`",
+                f"- Purpose: {card['purpose']}",
+                f"- Inputs: {', '.join(card['inputs'])}",
+                f"- Output: {card['output']}",
+                f"- Calls: {', '.join(card['calls']) or 'No resolved callees'}",
+                f"- Risk: {card['risk_label']} ({card['risk_score']}) because {card['why_risky']}",
+                "",
+            ])
+        return "\n".join(lines).strip() + "\n"
+
+    def _improvement_plan_markdown(self, *, include_header: bool = True) -> str:
+        lines = [f"# Improvement Plan: {self.repo_root.name}", ""] if include_header else []
+        lines.extend([
+            f"- Architecture health: {self.health.get('architecture_health', 'n/a')}/100",
+            f"- Maintainability: {self.health.get('maintainability', 'Unknown')}",
+            f"- Risk hotspots: {self.health.get('risk_hotspots', 0)}",
+            f"- Dead code candidates: {self.health.get('dead_code_candidates', 0)}",
+            f"- Missing tests: {self.health.get('missing_tests', 0)}",
+            "",
+            "## Suggested Refactors",
+            "",
+        ])
+        for item in self.improvements.get("architecture_suggestions", [])[:6]:
+            lines.append(f"- Current issue: {item['current_issue']}")
+            lines.append(f"  - Suggestion: {item['suggestion']}")
+        lines.extend([
+            "",
+            "## Recommended Structure",
+            "",
+            "```text",
+            self.improvements.get("suggested_structure", self._suggested_structure()).rstrip(),
+            "```",
+            "",
+            "## Code Smells",
+            "",
+        ])
+        for item in self.improvements.get("sections", {}).get("code_smells", [])[:10]:
+            lines.append(f"- `{item['target']}`: {item['reason']}")
+        return "\n".join(lines).strip() + "\n"
+
+    def _interview_pack_markdown(self) -> str:
+        architecture = self.explain_architecture(audience="newcomer")
+        hotspots = self.improvements.get("risk_hotspots", [])[:5]
+        lines = [
+            f"# Interview Pack: {self.repo_root.name}",
+            "",
+            "## One-Liner",
+            "",
+            f"{self.repo_root.name} is a code intelligence system that parses repositories into dependency-aware summaries, impact analysis, and exportable context packs.",
+            "",
+            "## Architecture Talking Points",
+            "",
+            f"- {architecture['narrative']}",
+            f"- The strongest technical differentiator is the dependency graph plus function-level retrieval.",
+            f"- The main value is helping a new engineer understand what breaks when a file or function changes.",
+            "",
+            "## Demo Flow",
+            "",
+            "1. Analyze a repo from URL, local path, or zip.",
+            "2. Open the repo map to find the important backend, UI, and engine files.",
+            "3. Click a function card to inspect its purpose, inputs, outputs, calls, and risk.",
+            "4. Use impact analysis and ask-repo mode to explain changes or flows.",
+            "5. Export the Repo Intelligence Pack for Claude or interview prep.",
+            "",
+            "## Risk Hotspots",
+            "",
+        ]
+        for item in hotspots:
+            lines.append(f"- `{item['target']}` ({item['score']}): {item['reason']}")
+        return "\n".join(lines).strip() + "\n"
+
+    def _pr_review_context_markdown(self, diff_text: str) -> str:
+        review = self.review_diff(diff_text) if diff_text.strip() else {"summary": "No diff provided.", "touched_files": [], "risk_areas": []}
+        lines = [
+            f"# PR Review Context: {self.repo_root.name}",
+            "",
+            review["summary"],
+            "",
+            "## Touched Files",
+            "",
+        ]
+        for file_path in review.get("touched_files", []):
+            lines.append(f"- `{file_path}`")
+        lines.extend(["", "## Risk Areas", ""])
+        for item in review.get("risk_areas", []):
+            lines.append(f"- `{item['target']}` ({item['risk_score']}): {item['explanation']}")
+            if item.get("suggested_tests"):
+                lines.append(f"  - Suggested tests: {', '.join(item['suggested_tests'])}")
+        if not review.get("risk_areas"):
+            lines.append("- No matched files were found in the analyzed repo graph.")
+        return "\n".join(lines).strip() + "\n"
+
+    def _dependency_graph_json(self) -> str:
+        payload = {
+            "file_graph": self._graph_payload("file"),
+            "symbol_graph": self._graph_payload("symbol"),
+        }
+        return json.dumps(payload, indent=2)
+
+    def _export_file(self, name: str, content: str, content_type: str = "text/markdown") -> dict[str, Any]:
+        return {"name": name, "content": content, "content_type": content_type}
+
+    def _search_explanation(self, item: dict[str, Any]) -> str:
+        if item["kind"] == "file":
+            file_record = self._files_by_path[item["file_path"]]
+            return f"{file_record.path} is a {file_record.language} file with {file_record.line_count} lines and {len(file_record.imports)} resolved dependencies."
+        return f"{item['title']} is a {item['level']} chunk in {item['file_path']} with graph-backed context included in retrieval."
 
     def _suggest_tests(self, affected_files: list[str], token_source: str) -> list[str]:
         token = token_source.lower()
@@ -861,8 +1771,18 @@ class RepositoryAnalyzer:
                 return file_record
         return None
 
+    def _extract_target_from_text(self, text: str) -> str | None:
+        lowered = text.lower()
+        for symbol in sorted(self.symbols, key=lambda item: len(item.qualified_name), reverse=True):
+            if symbol.qualified_name.lower() in lowered or symbol.name.lower() in lowered:
+                return symbol.qualified_name
+        for file_record in sorted(self.files, key=lambda item: len(item.path), reverse=True):
+            if file_record.path.lower() in lowered or Path(file_record.path).stem.lower() in lowered:
+                return file_record.path
+        return None
+
     def _summarize_file(self, file_record: FileRecord) -> str:
-        symbol_count = sum(1 for symbol in self.symbols if symbol.file_path == file_record.path)
+        symbol_count = len(self._symbols_for_file(file_record.path))
         return (
             f"{file_record.path} is a {file_record.language} file with {symbol_count} extracted symbols, "
             f"{len(file_record.imports)} resolved imports, and {file_record.line_count} lines."
@@ -878,7 +1798,7 @@ class RepositoryAnalyzer:
     def _detect_tech_stack(self) -> list[str]:
         detected: set[str] = set()
         raw_import_text = " ".join(" ".join(file_record.raw_imports) for file_record in self.files).lower()
-        for language, hints in FRAMEWORK_HINTS.items():
+        for hints in FRAMEWORK_HINTS.values():
             for token, label in hints.items():
                 if token in raw_import_text:
                     detected.add(label)
@@ -887,8 +1807,12 @@ class RepositoryAnalyzer:
             detected.add("Python")
         if language_counts.get("javascript"):
             detected.add("JavaScript/TypeScript")
-        if any(file_record.path.endswith("requirements.txt") for file_record in self.files):
+        root_requirements = self.repo_root / "requirements.txt"
+        package_json = self.repo_root / "package.json"
+        if root_requirements.exists():
             detected.add("pip")
+        if package_json.exists():
+            detected.add("npm")
         return sorted(detected)
 
     def _directory_summary(self, limit: int) -> str:
@@ -898,8 +1822,19 @@ class RepositoryAnalyzer:
         if not steps:
             return "No flow could be traced."
         first = steps[0]["symbol"]
-        immediate = ", ".join(steps[1]["symbol"] for steps in [steps] if len(steps) > 1)
         if len(steps) == 1:
             return f"{first} does not call into other known symbols in the analyzed graph."
         next_steps = ", ".join(item["symbol"] for item in steps[1:4])
         return f"The flow starts at {first} and then moves through {next_steps}. This gives a newcomer a practical call chain to inspect first."
+
+    def _flow_mermaid(self, steps: list[dict[str, Any]]) -> str:
+        if not steps:
+            return "flowchart TD\nA[No flow]\n"
+        lines = ["flowchart TD"]
+        for index, step in enumerate(steps):
+            node_id = f"n{index}"
+            label = step["symbol"].replace('"', "")
+            lines.append(f"{node_id}[{label}]")
+            if index > 0:
+                lines.append(f"n{index - 1} --> {node_id}")
+        return "\n".join(lines) + "\n"
