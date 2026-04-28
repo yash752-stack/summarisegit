@@ -8,7 +8,7 @@
 
 - Streamlit app entrypoint: `streamlit_app.py`
 - FastAPI app entrypoint: `app/main.py`
-- Public Streamlit URL: deploy this repo on Streamlit Community Cloud and select `streamlit_app.py`
+- Public Streamlit URL: [https://summarisegit-9dnrfxu6wjorasyvc8jvun.streamlit.app/](https://summarisegit-9dnrfxu6wjorasyvc8jvun.streamlit.app/)
 - Local Streamlit run: `streamlit run streamlit_app.py`
 
 ## API Usage
