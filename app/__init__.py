@@ -1,0 +1,1 @@
+"""summarisegit application package."""

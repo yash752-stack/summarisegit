@@ -1,0 +1,114 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>summarisegit</title>
+    <link rel="stylesheet" href="/static/styles.css" />
+    <script src="https://cdn.jsdelivr.net/npm/d3@7"></script>
+  </head>
+  <body>
+    <div class="page-shell">
+      <header class="hero">
+        <div class="eyebrow">Live Codebase Intelligence Engine</div>
+        <h1>summarisegit</h1>
+        <p class="subtitle">
+          Turn repositories into dependency graphs, impact reports, architecture summaries, and refactor intelligence.
+        </p>
+      </header>
+
+      <section class="panel form-panel">
+        <div class="panel-title">Analyze a Repository</div>
+        <form id="analyze-form">
+          <div class="field-grid">
+            <label>
+              Local Path
+              <input type="text" id="local-path" placeholder="/path/to/repo" />
+            </label>
+            <label>
+              GitHub Repo URL
+              <input type="text" id="repo-url" placeholder="https://github.com/org/repo" />
+            </label>
+            <label>
+              Upload Zip
+              <input type="file" id="repo-zip" accept=".zip" />
+            </label>
+          </div>
+          <div class="button-row">
+            <button type="submit" id="analyze-button">Analyze Repo</button>
+            <span id="status-text"></span>
+          </div>
+        </form>
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel">
+          <div class="panel-title">Repository Summary</div>
+          <div id="summary-cards" class="summary-cards"></div>
+          <div class="subpanel">
+            <h3>Biggest Files</h3>
+            <div id="biggest-files"></div>
+          </div>
+          <div class="subpanel">
+            <h3>Most-Used Functions</h3>
+            <div id="used-functions"></div>
+          </div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Architecture Snapshot</div>
+          <div id="architecture"></div>
+        </div>
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel">
+          <div class="panel-title">Dependency Graph</div>
+          <div class="tab-row">
+            <button class="tab active" data-graph-kind="file">File Graph</button>
+            <button class="tab" data-graph-kind="symbol">Function Graph</button>
+          </div>
+          <svg id="graph-canvas" viewBox="0 0 900 500"></svg>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Source & Node Details</div>
+          <div id="node-details" class="node-details">
+            Click a graph node or search result to inspect code and connected context.
+          </div>
+          <pre id="source-viewer" class="source-viewer"></pre>
+        </div>
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel">
+          <div class="panel-title">Impact Analysis</div>
+          <form id="impact-form" class="inline-form">
+            <input id="impact-target" type="text" placeholder="calculatePayment or services/payments.py" />
+            <button type="submit">Analyze Impact</button>
+          </form>
+          <div id="impact-output"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Hybrid Search</div>
+          <form id="search-form" class="inline-form">
+            <input id="search-query" type="text" placeholder="Where is login validation handled?" />
+            <button type="submit">Search</button>
+          </form>
+          <div id="search-results"></div>
+        </div>
+      </section>
+
+      <section class="grid two-col">
+        <div class="panel">
+          <div class="panel-title">Refactor Suggestions</div>
+          <div id="refactor-list"></div>
+        </div>
+        <div class="panel">
+          <div class="panel-title">Dead Code Candidates</div>
+          <div id="dead-code-list"></div>
+        </div>
+      </section>
+    </div>
+
+    <script src="/static/app.js"></script>
+  </body>
+</html>

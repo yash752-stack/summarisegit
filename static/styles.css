@@ -1,0 +1,257 @@
+:root {
+  --bg: #0a0d14;
+  --panel: #101725;
+  --panel-2: #0f1d2f;
+  --border: rgba(131, 159, 255, 0.16);
+  --text: #e8edff;
+  --muted: #91a0c2;
+  --accent: #8b7dff;
+  --accent-2: #4de2c5;
+  --danger: #ff7d96;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background:
+    radial-gradient(circle at top left, rgba(139, 125, 255, 0.22), transparent 30%),
+    radial-gradient(circle at top right, rgba(77, 226, 197, 0.16), transparent 25%),
+    var(--bg);
+  color: var(--text);
+  font-family: Inter, system-ui, sans-serif;
+}
+
+.page-shell {
+  max-width: 1440px;
+  margin: 0 auto;
+  padding: 32px 20px 48px;
+}
+
+.hero {
+  padding: 12px 4px 28px;
+}
+
+.eyebrow {
+  display: inline-block;
+  padding: 6px 10px;
+  border-radius: 999px;
+  background: rgba(139, 125, 255, 0.14);
+  color: #c5bbff;
+  font-size: 0.82rem;
+  margin-bottom: 12px;
+}
+
+h1 {
+  margin: 0;
+  font-size: clamp(2.8rem, 6vw, 4.8rem);
+  letter-spacing: -0.05em;
+}
+
+.subtitle {
+  max-width: 860px;
+  color: var(--muted);
+  font-size: 1.05rem;
+  line-height: 1.65;
+}
+
+.grid {
+  display: grid;
+  gap: 20px;
+  margin-top: 20px;
+}
+
+.two-col {
+  grid-template-columns: 1.15fr 0.85fr;
+}
+
+.panel {
+  border: 1px solid var(--border);
+  background: linear-gradient(180deg, rgba(16, 23, 37, 0.96), rgba(12, 18, 29, 0.98));
+  border-radius: 20px;
+  padding: 20px;
+  box-shadow: 0 18px 80px rgba(0, 0, 0, 0.28);
+}
+
+.form-panel {
+  margin-top: 10px;
+}
+
+.panel-title {
+  font-size: 1.15rem;
+  font-weight: 700;
+  margin-bottom: 16px;
+}
+
+.field-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 14px;
+}
+
+label {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+input {
+  width: 100%;
+  padding: 12px 14px;
+  border-radius: 12px;
+  border: 1px solid rgba(145, 160, 194, 0.18);
+  background: rgba(255, 255, 255, 0.03);
+  color: var(--text);
+}
+
+button {
+  border: 0;
+  border-radius: 12px;
+  padding: 12px 16px;
+  color: white;
+  font-weight: 700;
+  cursor: pointer;
+  background: linear-gradient(135deg, var(--accent), #5b4dff);
+}
+
+.button-row,
+.inline-form,
+.tab-row {
+  display: flex;
+  gap: 12px;
+  align-items: center;
+}
+
+#status-text {
+  color: var(--muted);
+  font-size: 0.92rem;
+}
+
+.summary-cards {
+  display: grid;
+  grid-template-columns: repeat(4, 1fr);
+  gap: 12px;
+  margin-bottom: 18px;
+}
+
+.summary-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(145, 160, 194, 0.12);
+  border-radius: 16px;
+  padding: 14px;
+}
+
+.summary-card .label {
+  color: var(--muted);
+  font-size: 0.86rem;
+}
+
+.summary-card .value {
+  margin-top: 8px;
+  font-size: 1.5rem;
+  font-weight: 800;
+}
+
+.subpanel h3 {
+  font-size: 0.96rem;
+  margin-bottom: 12px;
+}
+
+.list {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+}
+
+.list-item,
+.result-card,
+.impact-card {
+  background: rgba(255, 255, 255, 0.03);
+  border: 1px solid rgba(145, 160, 194, 0.12);
+  border-radius: 14px;
+  padding: 12px 14px;
+}
+
+.item-title {
+  font-weight: 700;
+}
+
+.meta {
+  color: var(--muted);
+  font-size: 0.9rem;
+  margin-top: 6px;
+}
+
+#graph-canvas {
+  width: 100%;
+  height: 500px;
+  border-radius: 16px;
+  background: radial-gradient(circle at top, rgba(139, 125, 255, 0.08), rgba(0, 0, 0, 0));
+  border: 1px solid rgba(145, 160, 194, 0.12);
+}
+
+.node-details {
+  color: var(--muted);
+  min-height: 120px;
+  line-height: 1.6;
+}
+
+.source-viewer {
+  margin-top: 14px;
+  max-height: 340px;
+  overflow: auto;
+  background: rgba(0, 0, 0, 0.28);
+  border-radius: 14px;
+  border: 1px solid rgba(145, 160, 194, 0.12);
+  padding: 14px;
+  white-space: pre-wrap;
+  font-family: "SFMono-Regular", Menlo, Consolas, monospace;
+  font-size: 0.88rem;
+}
+
+.tab {
+  background: rgba(255, 255, 255, 0.05);
+  color: var(--muted);
+}
+
+.tab.active {
+  background: linear-gradient(135deg, rgba(139, 125, 255, 0.25), rgba(77, 226, 197, 0.18));
+  color: var(--text);
+}
+
+.pill {
+  display: inline-block;
+  padding: 5px 9px;
+  margin-right: 8px;
+  margin-bottom: 8px;
+  border-radius: 999px;
+  background: rgba(77, 226, 197, 0.12);
+  color: #8af6e0;
+  font-size: 0.82rem;
+}
+
+.risk-score {
+  font-size: 2rem;
+  font-weight: 800;
+}
+
+.warning {
+  color: var(--danger);
+}
+
+@media (max-width: 1100px) {
+  .two-col,
+  .field-grid,
+  .summary-cards {
+    grid-template-columns: 1fr;
+  }
+
+  .inline-form {
+    flex-direction: column;
+    align-items: stretch;
+  }
+}
